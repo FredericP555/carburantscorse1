@@ -36,7 +36,10 @@ h1 span{color:var(--accent)}
 .analyse-titre{font-size:0.58rem;letter-spacing:0.1em;color:var(--muted);margin-bottom:0.35rem}
 .analyse-texte{font-size:0.68rem;line-height:1.7;color:var(--text)}
 .analyse-note{font-size:0.62rem;color:var(--muted);margin-top:0.3rem}
-.layout{display:grid;grid-template-columns:1fr 260px;gap:0;min-height:0}
+.layout{display:grid;grid-template-columns:minmax(0,1fr) 260px;gap:0;min-height:0;max-width:100%;overflow-x:hidden}
+html,body{max-width:100%;overflow-x:hidden}
+.charts,.chart-wrap{min-width:0;max-width:100%}
+canvas{max-width:100%!important}
 @media(max-width:700px){.layout{grid-template-columns:1fr}}
 .charts{padding:0.8rem 1.5rem}
 .chart-wrap{background:var(--surface);border:1px solid var(--border);border-radius:4px;padding:0.5rem 0.5rem 0.3rem;margin-bottom:0.8rem}
