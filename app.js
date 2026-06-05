@@ -39,7 +39,7 @@ const ZONES = [
 ];
 const EVENTS = [
   {date:'2022-02-24',label:'Invasion Ukraine',color:'rgba(220,38,38,0.8)'},
-  {date:'2025-11-17',label:'Sanctions Autorité concurrence',color:'rgba(234,88,12,0.8)'},
+  {date:'2025-11-17',label:'Sanctions Autorité conc.',color:'rgba(234,88,12,0.8)'},
   {date:'2026-02-28',label:"Guerre d'Iran",color:'rgba(220,38,38,0.8)'},
 ];
 const ANALYSE = {
@@ -104,16 +104,28 @@ function buildPrixDs() {
   }))};
 }
 
+function smooth7(arr) {
+  return arr.map((v,i)=>{
+    if(v==null) return null;
+    const w=3;
+    const sl=arr.slice(Math.max(0,i-w),i+w+1).filter(x=>x!=null);
+    return sl.length?Math.round(sl.reduce((a,b)=>a+b,0)/sl.length*100)/100:null;
+  });
+}
+
 function buildEcartDs() {
   const ck = carbu==='Gazole'?'G':'S';
   const labels = getLabels(ck, resolution);
   const corseHT = getHT(ck, 'corse', resolution);
   return {labels, datasets: ['moy_regions',...REGIONS].map(key=>({
     label:LABELS[key]||key, _key:key,
-    data: corseHT.map((vc,i)=>{
-      const vr = getHT(ck, key, resolution)[i];
-      return (vc!=null&&vr!=null)?Math.round((vc-vr)*10000)/100:null;
-    }),
+    data: (()=>{
+      const raw = corseHT.map((vc,i)=>{
+        const vr = getHT(ck, key, resolution)[i];
+        return (vc!=null&&vr!=null)?Math.round((vc-vr)*10000)/100:null;
+      });
+      return resolution==='d' ? smooth7(raw) : raw;
+    })(),
     borderColor:COLORS[key]||'#888',
     backgroundColor:(COLORS[key]||'#888')+'18',
     borderWidth:key==='moy_regions'?2:1.2,
@@ -155,18 +167,33 @@ const zonesPlugin = {
       ctx.fillStyle='rgba(234,88,12,0.09)';
       ctx.fillRect(x1,top,x2-x1,bottom-top);
     });
-    EVENTS.forEach(ev=>{
-      const px=getDateX(chart,ev.date);
-      if(px==null) return;
+    const isMobile = window.innerWidth < 700;
+    // Calculer les positions X de tous les événements pour éviter chevauchements
+    const evPositions = EVENTS.map(ev=>({ev, px:getDateX(chart,ev.date)}))
+                              .filter(e=>e.px!=null);
+    evPositions.forEach((item, idx)=>{
+      const {ev, px} = item;
       ctx.save();
       ctx.beginPath(); ctx.rect(left,top,right-left,bottom-top); ctx.clip();
+      // Ligne verticale
       ctx.beginPath(); ctx.strokeStyle=ev.color; ctx.lineWidth=1.5;
       ctx.setLineDash([5,4]); ctx.moveTo(px,top); ctx.lineTo(px,bottom); ctx.stroke();
       ctx.setLineDash([]);
       ctx.fillStyle=ev.color; ctx.font='bold 9px DM Mono,monospace';
-      ctx.textAlign='left'; ctx.textBaseline='top';
-      ctx.translate(px+3,top+6); ctx.rotate(Math.PI/2);
-      ctx.fillText(ev.label,0,0);
+      if(isMobile) {
+        // Décaler verticalement si trop proche du précédent (< 80px)
+        const prev = idx>0 ? evPositions[idx-1].px : null;
+        const tooClose = prev!=null && Math.abs(px-prev)<80;
+        const yPos = tooClose ? top+32 : top+18; // décaler le 2e vers le bas
+        const shortLabel = ev.label.split(' ').slice(0,2).join(' ');
+        ctx.textAlign='center'; ctx.textBaseline='bottom';
+        ctx.fillText(shortLabel, px, yPos);
+      } else {
+        // Desktop : label vertical
+        ctx.textAlign='left'; ctx.textBaseline='top';
+        ctx.translate(px+3,top+6); ctx.rotate(Math.PI/2);
+        ctx.fillText(ev.label,0,0);
+      }
       ctx.restore();
     });
     ctx.restore();
@@ -179,13 +206,24 @@ const MONTHS = ['jan','fév','mar','avr','mai','jun','jul','aoû','sep','oct','n
 function formatLabel(lbl) {
   if(!lbl) return '';
   if(resolution==='m') {
-    // "2022-01" → "jan 22"
     const [y,m] = lbl.split('-');
     return MONTHS[parseInt(m)-1]+' '+y.slice(2);
   }
-  // "2022-01-03" → "jan 22" (première du mois seulement)
+  if(resolution==='w') {
+    // Hebdo : label le premier lundi de chaque trimestre
+    const [y,m,d] = lbl.split('-');
+    if(d>'07') return '';
+    const mi = parseInt(m);
+    if(mi%3!==1) return '';
+    return MONTHS[mi-1]+' '+y.slice(2);
+  }
+  // Journalier : label le 1er de chaque mois, tous les 6 mois
   const [y,m,d] = lbl.split('-');
-  return d==='01'||d==='07'||d==='14'||d==='21' ? MONTHS[parseInt(m)-1]+' '+y.slice(2) : '';
+  if(d!=='01') return '';
+  const mi = parseInt(m);
+  // Afficher jan, juil (tous les 6 mois) → 8 repères sur 4 ans = lisible
+  if(mi!==1 && mi!==7) return '';
+  return MONTHS[mi-1]+' '+y.slice(2);
 }
 
 const TICK_CB = function(val) {
@@ -217,8 +255,8 @@ function initCharts() {
         }
       },
       scales:{
-        x:{ticks:{color:'#999',font:{family:'DM Mono',size:10},maxTicksLimit:18,maxRotation:0,autoSkip:true,callback:TICK_CB},grid:GRID_OPTS,border:BORDER_OPTS},
-        y:{min:1.1,afterFit(s){s.width=62;},
+        x:{ticks:{color:'#999',font:{family:'DM Mono',size:10},maxRotation:0,autoSkip:false,callback:TICK_CB},grid:GRID_OPTS,border:BORDER_OPTS},
+        y:{min:1.35,afterFit(s){s.width=62;},
           ticks:{color:'#999',font:{family:'DM Mono',size:11},padding:4,callback:v=>v.toFixed(2)+' €'},
           grid:{color:ctx=>ctx.tick?.value===0?'#aaa49a':'#e5e1d8'},border:BORDER_OPTS}
       }
@@ -240,7 +278,7 @@ function initCharts() {
         }
       },
       scales:{
-        x:{ticks:{color:'#999',font:{family:'DM Mono',size:10},maxTicksLimit:18,maxRotation:0,autoSkip:true,callback:TICK_CB},grid:GRID_OPTS,border:BORDER_OPTS},
+        x:{ticks:{color:'#999',font:{family:'DM Mono',size:10},maxRotation:0,autoSkip:false,callback:TICK_CB},grid:GRID_OPTS,border:BORDER_OPTS},
         y:{beginAtZero:false,
           ticks:{color:'#999',font:{family:'DM Mono',size:11},callback:v=>(v>=0?'+':'')+v.toFixed(1)+' c€'},
           grid:{color:ctx=>ctx.tick?.value===0?'#aaa49a':'#e5e1d8',lineWidth:ctx=>ctx.tick?.value===0?1.5:1},
@@ -271,12 +309,13 @@ function setVisible(key, visible) {
 }
 
 function lastVal(key) {
+  // Toujours sur les données journalières pour le classement
   if(key==='moy_regions') {
     const vals=REGIONS.map(r=>lastVal(r)).filter(v=>v!=null);
     return vals.length?vals.reduce((a,b)=>a+b,0)/vals.length:null;
   }
   const ck=carbu==='Gazole'?'G':'S';
-  const pts=getSeries(ck,key,resolution);
+  const pts=getSeries(ck,key,'d');
   const last=pts.filter(p=>p[1]!=null).at(-1);
   return last?last[1]:null;
 }
