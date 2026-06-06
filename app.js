@@ -136,17 +136,12 @@ function buildEcartDs() {
 // ── Plugins zones/événements ─────────────────────────────────────────────────
 function getDateX(chart, dateStr) {
   const labels = chart.data.labels;
-  // Cherche le label le plus proche de la date cible
-  // (important en mode hebdo où les labels sont les lundis)
-  let best = -1, bestDiff = Infinity;
-  for(let i=0; i<labels.length; i++) {
-    const lbl = labels[i];
-    if(!lbl) continue;
-    // Comparer les dates ISO
-    const diff = Math.abs(new Date(lbl) - new Date(dateStr));
-    if(diff < bestDiff) { bestDiff = diff; best = i; }
-  }
-  return best<0 ? null : chart.scales.x.getPixelForValue(best);
+  let i = labels.indexOf(dateStr);
+  if(i<0) i = labels.findIndex(d=>d && d>=dateStr);
+  // Si dateStr dépasse le dernier label (ex: fin bouclier après dernière semaine)
+  // utiliser le dernier index disponible
+  if(i<0) i = labels.length - 1;
+  return i<0 ? null : chart.scales.x.getPixelForValue(i);
 }
 
 const zonesPlugin = {
@@ -192,21 +187,14 @@ const zonesPlugin = {
       } else {
         // Desktop : label vertical ancré en bas
         // Si proche du bord droit → texte vers la gauche (rotate inverse)
-        ctx.textBaseline = 'bottom';
+        // Toujours ancré en bas, rotate(-PI/2) = texte monte vers le haut
+        // Si proche du bord droit : textAlign='right' → texte part vers la gauche
         const textW = ctx.measureText(ev.label).width;
-        // En rotation -90°, le texte occupe textW pixels verticalement
-        // nearRight = pas assez de hauteur disponible depuis le bas
-        const spaceFromBottom = bottom - top - 20;
-        const nearRight = textW > spaceFromBottom * 0.7 || (px + 15) > right;
-        if(nearRight) {
-          ctx.textAlign = 'left';
-          ctx.translate(px - 3, top + 8);
-          ctx.rotate(Math.PI/2);
-        } else {
-          ctx.textAlign = 'left';
-          ctx.translate(px + 3, bottom - 20);
-          ctx.rotate(-Math.PI/2);
-        }
+        const nearRight = (px - left) / (right - left) > 0.75;
+        ctx.textBaseline = 'bottom';
+        ctx.textAlign = nearRight ? 'right' : 'left';
+        ctx.translate(nearRight ? px - 3 : px + 3, bottom - 20);
+        ctx.rotate(-Math.PI/2);
         ctx.fillText(ev.label, 0, 0);
       }
       ctx.restore();
