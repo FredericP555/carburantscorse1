@@ -191,7 +191,7 @@ const zonesPlugin = {
         ctx.fillStyle = ev.color;
         ctx.textAlign = 'left';
         ctx.textBaseline = 'top';
-        ctx.translate(px + 3, top + 8);
+        ctx.translate(px + 3, top + 20);
         ctx.rotate(Math.PI/2);
         ctx.fillText(ev.label, 0, 0);
       }
