@@ -181,31 +181,24 @@ const zonesPlugin = {
       ctx.setLineDash([]);
       ctx.fillStyle=ev.color; ctx.font='bold 9px DM Mono,monospace';
       if(isMobile) {
-        // Sur mobile : toujours affiché, aligné selon position, décalé verticalement
-        const words = ev.label.split(' ');
-        const shortLabel = words[words.length - 1]; // "Ukraine", "Autorité", "Iran"
-        const yPos = top + 8 + (idx % 2) * 14; // alternance haut/bas
-        const relPos = (px - left) / (right - left);
-        ctx.font = 'bold 8px DM Mono,monospace';
-        ctx.fillStyle = ev.color;
-        ctx.textBaseline = 'top';
-        if(relPos > 0.65) {
-          // Proche du bord droit : texte à gauche de la ligne
+        // Sur mobile : ligne verticale uniquement, pas de label
+        // (légende affichée sous le graphe via HTML)
+      } else {
+        // Desktop : label vertical ancré en bas
+        // Si proche du bord droit → texte vers la gauche (rotate inverse)
+        ctx.textBaseline = 'bottom';
+        const textW = ctx.measureText(ev.label).width;
+        const nearRight = (px + textW + 10) > right;
+        if(nearRight) {
+          // Texte monte vers le haut depuis le bas, ancré à droite de la ligne
           ctx.textAlign = 'right';
-          ctx.fillText(shortLabel, px - 4, yPos);
+          ctx.translate(px - 3, bottom - 6);
+          ctx.rotate(-Math.PI/2);
         } else {
           ctx.textAlign = 'left';
-          ctx.fillText(shortLabel, px + 4, yPos);
+          ctx.translate(px + 3, bottom - 6);
+          ctx.rotate(-Math.PI/2);
         }
-      } else {
-        // Desktop : label vertical depuis le haut
-        // Si proche du bord droit, inverser le sens pour éviter la coupure
-        const textWidth = ctx.measureText(ev.label).width;
-        const nearRight = (px + textWidth + 10) > right;
-        ctx.textAlign = nearRight ? 'right' : 'left';
-        ctx.textBaseline = 'top';
-        ctx.translate(px + (nearRight ? -3 : 3), top + 6);
-        ctx.rotate(Math.PI/2);
         ctx.fillText(ev.label, 0, 0);
       }
       ctx.restore();
