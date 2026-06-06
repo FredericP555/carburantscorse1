@@ -1,5 +1,5 @@
 let DATA = null;
-let resolution = 'm'; // m=mensuel w=hebdo d=journalier (défaut: mensuel)
+let resolution = 'd'; // m=mensuel w=hebdo d=journalier (défaut: journalier)
 
 async function loadData() {
   const resp = await fetch('data.json');
@@ -39,7 +39,7 @@ const ZONES = [
 ];
 const EVENTS = [
   {date:'2022-02-24',label:'Invasion Ukraine',color:'rgba(220,38,38,0.8)'},
-  {date:'2025-11-17',label:'Sanctions Autorité conc.',color:'rgba(234,88,12,0.8)'},
+  {date:'2025-11-17',label:'Sanctions Autorité',color:'rgba(234,88,12,0.8)'},
   {date:'2026-02-28',label:"Guerre d'Iran",color:'rgba(220,38,38,0.8)'},
 ];
 const ANALYSE = {
@@ -181,18 +181,13 @@ const zonesPlugin = {
       ctx.setLineDash([]);
       ctx.fillStyle=ev.color; ctx.font='bold 9px DM Mono,monospace';
       if(isMobile) {
-        // Décaler verticalement si trop proche du précédent (< 80px)
-        const prev = idx>0 ? evPositions[idx-1].px : null;
-        const tooClose = prev!=null && Math.abs(px-prev)<80;
-        const yPos = tooClose ? top+32 : top+18; // décaler le 2e vers le bas
-        const shortLabel = ev.label.split(' ').slice(0,2).join(' ');
-        ctx.textAlign='center'; ctx.textBaseline='bottom';
-        ctx.fillText(shortLabel, px, yPos);
+        // Sur mobile : pas de label texte, juste la ligne verticale
+        // (trop étroit pour afficher du texte lisiblement)
       } else {
-        // Desktop : label vertical
-        ctx.textAlign='left'; ctx.textBaseline='top';
-        ctx.translate(px+3,top+6); ctx.rotate(Math.PI/2);
-        ctx.fillText(ev.label,0,0);
+        // Desktop : label vertical ancré en bas du graphe, monte vers le haut
+        ctx.textAlign='right'; ctx.textBaseline='middle';
+        ctx.translate(px-3, bottom-10); ctx.rotate(-Math.PI/2);
+        ctx.fillText(ev.label, 0, 0);
       }
       ctx.restore();
     });
@@ -209,25 +204,23 @@ function formatLabel(lbl) {
     const [y,m] = lbl.split('-');
     return MONTHS[parseInt(m)-1]+' '+y.slice(2);
   }
-  if(resolution==='w') {
-    // Hebdo : label le premier lundi de chaque trimestre
-    const [y,m,d] = lbl.split('-');
-    if(d>'07') return '';
-    const mi = parseInt(m);
-    if(mi%3!==1) return '';
-    return MONTHS[mi-1]+' '+y.slice(2);
-  }
-  // Journalier : label le 1er de chaque mois, tous les 6 mois
-  const [y,m,d] = lbl.split('-');
-  if(d!=='01') return '';
-  const mi = parseInt(m);
-  // Afficher jan, juil (tous les 6 mois) → 8 repères sur 4 ans = lisible
-  if(mi!==1 && mi!==7) return '';
-  return MONTHS[mi-1]+' '+y.slice(2);
+  const parts = lbl.split('-');
+  const y=parts[0], m=parts[1];
+  return MONTHS[parseInt(m)-1]+' '+y.slice(2);
 }
 
-const TICK_CB = function(val) {
-  return formatLabel(this.getLabelForValue(val));
+const TICK_CB = function(val, idx, ticks) {
+  const lbl = this.getLabelForValue(val);
+  if(!lbl) return '';
+  // En journalier/hebdo : n'afficher que le 1er janvier de chaque année
+  if(resolution !== 'm') {
+    const parts = lbl.split('-');
+    if(!parts[1] || !parts[2]) return '';
+    if(parts[1] !== '01') return '';
+    if(resolution === 'd' && parts[2] !== '01') return '';
+    if(resolution === 'w' && parseInt(parts[2]) > 7) return '';
+  }
+  return formatLabel(lbl);
 };
 const GRID_OPTS  = {color:'#e5e1d8'};
 const BORDER_OPTS = {color:'#dedad2'};
@@ -256,7 +249,7 @@ function initCharts() {
       },
       scales:{
         x:{ticks:{color:'#999',font:{family:'DM Mono',size:10},maxRotation:0,autoSkip:false,callback:TICK_CB},grid:GRID_OPTS,border:BORDER_OPTS},
-        y:{min:1.35,afterFit(s){s.width=62;},
+        y:{afterFit(s){s.width=62;},
           ticks:{color:'#999',font:{family:'DM Mono',size:11},padding:4,callback:v=>v.toFixed(2)+' €'},
           grid:{color:ctx=>ctx.tick?.value===0?'#aaa49a':'#e5e1d8'},border:BORDER_OPTS}
       }
@@ -287,6 +280,14 @@ function initCharts() {
     }
   });
   applyVisibility();
+  // Mettre à jour les titres dès le chargement
+  document.getElementById('chartLabel').textContent=`${carbu.toUpperCase()} TTC — PRIX MOYEN ${resolution==='m'?'MENSUEL':resolution==='w'?'HEBDOMADAIRE':'JOURNALIER'}`;
+  document.getElementById('chartEcartLabel').textContent=`${carbu.toUpperCase()} HT — ÉCART CORSE VS RÉGIONS (C€/L)`;
+  document.getElementById('rankLabel').textContent=`CLASSEMENT AU 28 MAI 2026 — ${carbu.toUpperCase()} TTC`;
+  // Mettre à jour le bouton résolution actif
+  document.querySelectorAll('[data-res]').forEach(b=>{
+    b.classList.toggle('active', b.dataset.res===resolution);
+  });
 }
 
 function applyVisibility() {
@@ -427,7 +428,7 @@ document.querySelectorAll('[data-res]').forEach(b=>b.addEventListener('click',()
 async function init() {
   await loadData();
   initCharts();
-  updateBouclierInfo(); buildLegend(); buildRanking(); buildAnalyse();
+  refresh(); // met à jour titres, légende, classement, analyse
   document.getElementById('loading').style.display='none';
 }
 
