@@ -181,8 +181,13 @@ const zonesPlugin = {
       ctx.setLineDash([]);
       ctx.fillStyle=ev.color; ctx.font='bold 9px DM Mono,monospace';
       if(isMobile) {
-        // Sur mobile : pas de label texte, juste la ligne verticale
-        // (trop étroit pour afficher du texte lisiblement)
+        // Sur mobile : label court horizontal, alternance haut/bas pour éviter chevauchement
+        const shortLabel = ev.label.length > 12 ? ev.label.slice(0,12)+'…' : ev.label;
+        const yPos = (idx % 2 === 0) ? top + 12 : top + 24;
+        ctx.font = 'bold 8px DM Mono,monospace';
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'top';
+        ctx.fillText(shortLabel, px + 3, yPos);
       } else {
         // Desktop : label vertical ancré en bas du graphe, monte vers le haut
         ctx.textAlign='right'; ctx.textBaseline='middle';
@@ -212,13 +217,15 @@ function formatLabel(lbl) {
 const TICK_CB = function(val, idx, ticks) {
   const lbl = this.getLabelForValue(val);
   if(!lbl) return '';
-  // En journalier/hebdo : n'afficher que le 1er janvier de chaque année
-  if(resolution !== 'm') {
+  // Journalier : uniquement 1er janvier de chaque année
+  if(resolution === 'd') {
     const parts = lbl.split('-');
-    if(!parts[1] || !parts[2]) return '';
-    if(parts[1] !== '01') return '';
-    if(resolution === 'd' && parts[2] !== '01') return '';
-    if(resolution === 'w' && parseInt(parts[2]) > 7) return '';
+    if(parts[1] !== '01' || parts[2] !== '01') return '';
+  }
+  // Hebdomadaire : uniquement 1er lundi de janvier de chaque année
+  if(resolution === 'w') {
+    const parts = lbl.split('-');
+    if(parts[1] !== '01' || parseInt(parts[2]) > 7) return '';
   }
   return formatLabel(lbl);
 };
@@ -244,7 +251,17 @@ function initCharts() {
         legend:{display:false},
         tooltip:{...TOOLTIP_BASE,
           filter:item=>(item.dataset._key==='corse'||item.dataset._key===selReg),
-          callbacks:{label:ctx=>`${ctx.dataset.label}: ${ctx.parsed.y?.toFixed(2)} € TTC`}
+          callbacks:{
+          title: items => {
+            if(!items.length) return '';
+            const lbl = items[0].label;
+            if(resolution === 'w') {
+              const [y,m,d] = lbl.split('-');
+              return `Semaine du ${d}/${m}/${y.slice(2)}`;
+            }
+            return lbl;
+          },
+          label:ctx=>`${ctx.dataset.label}: ${ctx.parsed.y?.toFixed(2)} € TTC`}
         }
       },
       scales:{
@@ -264,7 +281,17 @@ function initCharts() {
         legend:{display:false},
         tooltip:{...TOOLTIP_BASE,
           filter:item=>item.dataset._key===selReg,
-          callbacks:{label:ctx=>{
+          callbacks:{
+          title: items => {
+            if(!items.length) return '';
+            const lbl = items[0].label;
+            if(resolution === 'w') {
+              const [y,m,d] = lbl.split('-');
+              return `Semaine du ${d}/${m}/${y.slice(2)}`;
+            }
+            return lbl;
+          },
+          label:ctx=>{
             const v=ctx.parsed.y; if(v==null) return null;
             return `${ctx.dataset.label}: ${v>=0?'+':''}${v.toFixed(2)} c€/L`;
           }}
@@ -281,7 +308,7 @@ function initCharts() {
   });
   applyVisibility();
   // Mettre à jour les titres dès le chargement
-  document.getElementById('chartLabel').textContent=`${carbu.toUpperCase()} TTC — PRIX MOYEN ${resolution==='m'?'MENSUEL':resolution==='w'?'HEBDOMADAIRE':'JOURNALIER'}`;
+  document.getElementById('chartLabel').textContent=`${carbu.toUpperCase()} TTC — PRIX MOYEN ${resolution==='w'?'HEBDOMADAIRE':'JOURNALIER'}`;
   document.getElementById('chartEcartLabel').textContent=`${carbu.toUpperCase()} HT — ÉCART CORSE VS RÉGIONS (C€/L)`;
   document.getElementById('rankLabel').textContent=`CLASSEMENT AU 28 MAI 2026 — ${carbu.toUpperCase()} TTC`;
   // Mettre à jour le bouton résolution actif
@@ -404,7 +431,7 @@ function refresh() {
   chartEcart.data.labels=ed.labels;
   chartEcart.data.datasets.forEach((ds,i)=>{if(ed.datasets[i]) ds.data=ed.datasets[i].data;});
   applyVisibility();
-  document.getElementById('chartLabel').textContent=`${carbu.toUpperCase()} TTC — PRIX MOYEN ${resolution==='m'?'MENSUEL':resolution==='w'?'HEBDOMADAIRE':'JOURNALIER'}`;
+  document.getElementById('chartLabel').textContent=`${carbu.toUpperCase()} TTC — PRIX MOYEN ${resolution==='w'?'HEBDOMADAIRE':'JOURNALIER'}`;
   document.getElementById('chartEcartLabel').textContent=`${carbu.toUpperCase()} HT — ÉCART CORSE VS RÉGIONS (C€/L)`;
   document.getElementById('rankLabel').textContent=`CLASSEMENT AU 28 MAI 2026 — ${carbu.toUpperCase()} TTC`;
   updateBouclierInfo(); buildLegend(); buildRanking(); buildAnalyse();
