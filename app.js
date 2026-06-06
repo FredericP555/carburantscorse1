@@ -185,16 +185,25 @@ const zonesPlugin = {
         // Sur mobile : ligne verticale uniquement, pas de label
         // (légende affichée sous le graphe via HTML)
       } else {
-        // Desktop : label vertical ancré en bas
-        // Si proche du bord droit → texte vers la gauche (rotate inverse)
-        // Toujours ancré en bas, rotate(-PI/2) = texte monte vers le haut
-        // Si proche du bord droit : textAlign='right' → texte part vers la gauche
-        const textW = ctx.measureText(ev.label).width;
-        const nearRight = (px - left) / (right - left) > 0.68;
-        ctx.textBaseline = 'bottom';
-        ctx.textAlign = nearRight ? 'right' : 'left';
-        ctx.translate(nearRight ? px - 3 : px + 3, bottom - 20);
-        ctx.rotate(-Math.PI/2);
+        // Desktop : label vertical depuis le haut
+        // Si l'événement est dans les 30% droits du graphe → texte à gauche
+        const nearRight = (px - left) / (right - left) > 0.70;
+        ctx.font = 'bold 9px DM Mono,monospace';
+        ctx.textBaseline = 'top';
+        ctx.textAlign = 'left';
+        ctx.translate(px + 3, top + 6);
+        ctx.rotate(Math.PI/2);
+        // Si nearRight, décaler le point d'ancrage pour que le texte parte vers le haut
+        if(nearRight) {
+          ctx.restore(); ctx.save();
+          ctx.beginPath(); ctx.rect(left,top,right-left,bottom-top); ctx.clip();
+          ctx.fillStyle = ev.color;
+          ctx.font = 'bold 9px DM Mono,monospace';
+          ctx.textBaseline = 'top';
+          ctx.textAlign = 'right';
+          ctx.translate(px - 3, top + 6);
+          ctx.rotate(Math.PI/2);
+        }
         ctx.fillText(ev.label, 0, 0);
       }
       ctx.restore();
