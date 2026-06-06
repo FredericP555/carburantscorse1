@@ -190,7 +190,7 @@ const zonesPlugin = {
         // Toujours ancré en bas, rotate(-PI/2) = texte monte vers le haut
         // Si proche du bord droit : textAlign='right' → texte part vers la gauche
         const textW = ctx.measureText(ev.label).width;
-        const nearRight = (px - left) / (right - left) > 0.75;
+        const nearRight = (px - left) / (right - left) > 0.68;
         ctx.textBaseline = 'bottom';
         ctx.textAlign = nearRight ? 'right' : 'left';
         ctx.translate(nearRight ? px - 3 : px + 3, bottom - 20);
