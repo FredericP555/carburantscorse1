@@ -39,7 +39,7 @@ const ZONES = [
 ];
 const EVENTS = [
   {date:'2022-02-24',label:'Invasion Ukraine',   color:'rgba(220,38,38,0.85)'},   // rouge
-  {date:'2025-11-17',label:'Sanctions Autorité', color:'rgba(234,88,12,0.85)'},   // orange
+  {date:'2025-11-17',label:'Sanctions Autorité', color:'rgba(14,116,144,0.85)'},  // bleu pétrole
   {date:'2026-02-28',label:"Guerre d'Iran",      color:'rgba(124,58,237,0.85)'},  // violet
 ];
 const ANALYSE = {
@@ -136,11 +136,17 @@ function buildEcartDs() {
 // ── Plugins zones/événements ─────────────────────────────────────────────────
 function getDateX(chart, dateStr) {
   const labels = chart.data.labels;
-  // Pour mensuel, dateStr peut être "2022-09" → chercher le mois
-  const searchStr = resolution==='m' ? dateStr.slice(0,7) : dateStr;
-  let i = labels.indexOf(searchStr);
-  if(i<0) i = labels.findIndex(d=>d>=searchStr);
-  return i<0?null:chart.scales.x.getPixelForValue(i);
+  // Cherche le label le plus proche de la date cible
+  // (important en mode hebdo où les labels sont les lundis)
+  let best = -1, bestDiff = Infinity;
+  for(let i=0; i<labels.length; i++) {
+    const lbl = labels[i];
+    if(!lbl) continue;
+    // Comparer les dates ISO
+    const diff = Math.abs(new Date(lbl) - new Date(dateStr));
+    if(diff < bestDiff) { bestDiff = diff; best = i; }
+  }
+  return best<0 ? null : chart.scales.x.getPixelForValue(best);
 }
 
 const zonesPlugin = {
@@ -188,12 +194,14 @@ const zonesPlugin = {
         // Si proche du bord droit → texte vers la gauche (rotate inverse)
         ctx.textBaseline = 'bottom';
         const textW = ctx.measureText(ev.label).width;
-        const nearRight = (px + textW + 10) > right;
+        // En rotation -90°, le texte occupe textW pixels verticalement
+        // nearRight = pas assez de hauteur disponible depuis le bas
+        const spaceFromBottom = bottom - top - 20;
+        const nearRight = textW > spaceFromBottom * 0.7 || (px + 15) > right;
         if(nearRight) {
-          // Texte monte vers le haut depuis le bas, ancré à droite de la ligne
-          ctx.textAlign = 'right';
-          ctx.translate(px - 3, bottom - 20);
-          ctx.rotate(-Math.PI/2);
+          ctx.textAlign = 'left';
+          ctx.translate(px - 3, top + 8);
+          ctx.rotate(Math.PI/2);
         } else {
           ctx.textAlign = 'left';
           ctx.translate(px + 3, bottom - 20);
