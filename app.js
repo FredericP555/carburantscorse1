@@ -38,9 +38,9 @@ const ZONES = [
   {d1:'2022-11-16',d2:'2022-12-31',alpha_fill:0.12},
 ];
 const EVENTS = [
-  {date:'2022-02-24',label:'Invasion Ukraine',color:'rgba(220,38,38,0.8)'},
-  {date:'2025-11-17',label:'Sanctions Autorité',color:'rgba(234,88,12,0.8)'},
-  {date:'2026-02-28',label:"Guerre d'Iran",color:'rgba(220,38,38,0.8)'},
+  {date:'2022-02-24',label:'Invasion Ukraine',   color:'rgba(220,38,38,0.85)'},   // rouge
+  {date:'2025-11-17',label:'Sanctions Autorité', color:'rgba(234,88,12,0.85)'},   // orange
+  {date:'2026-02-28',label:"Guerre d'Iran",      color:'rgba(124,58,237,0.85)'},  // violet
 ];
 const ANALYSE = {
   Gazole:{
@@ -158,7 +158,7 @@ const zonesPlugin = {
     (BOUCLIER[carbu]||[]).forEach(z=>{
       const x1=getDateX(chart,z.d1),x2=getDateX(chart,z.d2);
       if(x1==null||x2==null) return;
-      ctx.fillStyle='rgba(251,191,36,0.12)';
+      ctx.fillStyle='rgba(251,191,36,0.20)';
       ctx.fillRect(x1,top,x2-x1,bottom-top);
     });
     if(carbu==='Gazole')(BOUCLIER['Gazole_promo']||[]).forEach(z=>{
@@ -192,11 +192,11 @@ const zonesPlugin = {
         if(nearRight) {
           // Texte monte vers le haut depuis le bas, ancré à droite de la ligne
           ctx.textAlign = 'right';
-          ctx.translate(px - 3, bottom - 6);
+          ctx.translate(px - 3, bottom - 20);
           ctx.rotate(-Math.PI/2);
         } else {
           ctx.textAlign = 'left';
-          ctx.translate(px + 3, bottom - 6);
+          ctx.translate(px + 3, bottom - 20);
           ctx.rotate(-Math.PI/2);
         }
         ctx.fillText(ev.label, 0, 0);
