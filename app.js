@@ -181,17 +181,31 @@ const zonesPlugin = {
       ctx.setLineDash([]);
       ctx.fillStyle=ev.color; ctx.font='bold 9px DM Mono,monospace';
       if(isMobile) {
-        // Sur mobile : label court horizontal, alternance haut/bas pour éviter chevauchement
-        const shortLabel = ev.label.length > 12 ? ev.label.slice(0,12)+'…' : ev.label;
-        const yPos = (idx % 2 === 0) ? top + 12 : top + 24;
+        // Sur mobile : toujours affiché, aligné selon position, décalé verticalement
+        const words = ev.label.split(' ');
+        const shortLabel = words[words.length - 1]; // "Ukraine", "Autorité", "Iran"
+        const yPos = top + 8 + (idx % 2) * 14; // alternance haut/bas
+        const relPos = (px - left) / (right - left);
         ctx.font = 'bold 8px DM Mono,monospace';
-        ctx.textAlign = 'left';
+        ctx.fillStyle = ev.color;
         ctx.textBaseline = 'top';
-        ctx.fillText(shortLabel, px + 3, yPos);
+        if(relPos > 0.65) {
+          // Proche du bord droit : texte à gauche de la ligne
+          ctx.textAlign = 'right';
+          ctx.fillText(shortLabel, px - 4, yPos);
+        } else {
+          ctx.textAlign = 'left';
+          ctx.fillText(shortLabel, px + 4, yPos);
+        }
       } else {
-        // Desktop : label vertical ancré en bas du graphe, monte vers le haut
-        ctx.textAlign='right'; ctx.textBaseline='middle';
-        ctx.translate(px-3, bottom-10); ctx.rotate(-Math.PI/2);
+        // Desktop : label vertical depuis le haut
+        // Si proche du bord droit, inverser le sens pour éviter la coupure
+        const textWidth = ctx.measureText(ev.label).width;
+        const nearRight = (px + textWidth + 10) > right;
+        ctx.textAlign = nearRight ? 'right' : 'left';
+        ctx.textBaseline = 'top';
+        ctx.translate(px + (nearRight ? -3 : 3), top + 6);
+        ctx.rotate(Math.PI/2);
         ctx.fillText(ev.label, 0, 0);
       }
       ctx.restore();
@@ -254,8 +268,8 @@ function initCharts() {
           callbacks:{
           title: items => {
             if(!items.length) return '';
-            const lbl = items[0].label;
-            if(resolution === 'w') {
+            const lbl = items[0].chart.data.labels[items[0].dataIndex] || items[0].label || '';
+            if(resolution === 'w' && lbl.includes('-')) {
               const [y,m,d] = lbl.split('-');
               return `Semaine du ${d}/${m}/${y.slice(2)}`;
             }
@@ -284,8 +298,8 @@ function initCharts() {
           callbacks:{
           title: items => {
             if(!items.length) return '';
-            const lbl = items[0].label;
-            if(resolution === 'w') {
+            const lbl = items[0].chart.data.labels[items[0].dataIndex] || items[0].label || '';
+            if(resolution === 'w' && lbl.includes('-')) {
               const [y,m,d] = lbl.split('-');
               return `Semaine du ${d}/${m}/${y.slice(2)}`;
             }
