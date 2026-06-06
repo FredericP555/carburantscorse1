@@ -187,7 +187,7 @@ const zonesPlugin = {
       } else {
         // Label vertical : ancre en haut (top+8), rotate(+PI/2), texte vers le bas
         // → texte descend vers l'intérieur du graphe, jamais coupé
-        ctx.font = 'bold 9px DM Mono,monospace';
+        ctx.font = 'bold 11px DM Mono,monospace';
         ctx.fillStyle = ev.color;
         ctx.textAlign = 'left';
         ctx.textBaseline = 'top';
