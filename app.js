@@ -185,25 +185,14 @@ const zonesPlugin = {
         // Sur mobile : ligne verticale uniquement, pas de label
         // (légende affichée sous le graphe via HTML)
       } else {
-        // Desktop : deux cas propres
-        // Cas normal : depuis top, texte descend le long de la ligne
-        // Cas nearRight (>70%) : depuis bottom, texte monte le long de la ligne
+        // Label vertical : ancre en haut (top+8), rotate(+PI/2), texte vers le bas
+        // → texte descend vers l'intérieur du graphe, jamais coupé
         ctx.font = 'bold 9px DM Mono,monospace';
         ctx.fillStyle = ev.color;
-        const nearRight = (px - left) / (right - left) > 0.70;
-        if(nearRight) {
-          // Depuis le bas, rotation -90° → texte monte vers le haut, jamais coupé
-          ctx.textBaseline = 'bottom';
-          ctx.textAlign = 'left';
-          ctx.translate(px + 3, bottom - 6);
-          ctx.rotate(-Math.PI/2);
-        } else {
-          // Depuis le haut, rotation +90° → texte descend, jamais coupé
-          ctx.textBaseline = 'top';
-          ctx.textAlign = 'left';
-          ctx.translate(px + 3, top + 6);
-          ctx.rotate(Math.PI/2);
-        }
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'top';
+        ctx.translate(px + 3, top + 8);
+        ctx.rotate(Math.PI/2);
         ctx.fillText(ev.label, 0, 0);
       }
       ctx.restore();
