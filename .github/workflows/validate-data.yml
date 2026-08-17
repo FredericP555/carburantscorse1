@@ -25,8 +25,8 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
-      - name: Check continuity at published cutoff
-        run: python scripts/check_recent_overlap.py
+      - name: Test department weighting hypothesis
+        run: python scripts/test_department_weighting.py
 
       - name: Keep validation red during methodology diagnostics
         run: exit 1
