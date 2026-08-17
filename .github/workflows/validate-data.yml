@@ -1,0 +1,37 @@
+name: Validate fuel data generator
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout automation branch
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Regenerate current year and validate overlap
+        run: python scripts/update_data.py --input data.json --output data-new.json
+
+      - name: Show resulting file size
+        run: ls -lh data.json data-new.json
+
+      - name: Upload candidate data.json
+        uses: actions/upload-artifact@v4
+        with:
+          name: candidate-data-json
+          path: data-new.json
+          retention-days: 7
