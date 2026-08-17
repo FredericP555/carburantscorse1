@@ -1,0 +1,89 @@
+name: Update fuel observatory weekly
+
+on:
+  schedule:
+    # Monday morning: 06:30 UTC = 07:30 CET / 08:30 CEST.
+    - cron: '30 6 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pages: write
+
+concurrency:
+  group: weekly-fuel-observatory
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Build append-only candidate
+        run: python scripts/update_data_append.py --input data.json --output data-candidate.json
+
+      - name: Detect whether official data advanced
+        id: changed
+        shell: bash
+        run: |
+          if cmp -s data.json data-candidate.json; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "No new official day: clean no-op."
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            echo "New official data detected."
+          fi
+
+      - name: Validate candidate
+        if: steps.changed.outputs.changed == 'true'
+        run: python scripts/validate_candidate.py
+
+      - name: Add dynamic bouclier and editorial metadata
+        if: steps.changed.outputs.changed == 'true'
+        run: python scripts/enrich_data_meta.py --input data-candidate.json
+
+      - name: Validate metadata
+        if: steps.changed.outputs.changed == 'true'
+        run: python scripts/validate_meta.py
+
+      - name: Replace data.json
+        if: steps.changed.outputs.changed == 'true'
+        run: mv data-candidate.json data.json
+
+      - name: Commit updated data
+        if: steps.changed.outputs.changed == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data.json
+          git commit -m "Update fuel data $(date -u +%Y-%m-%d)"
+          git push origin main
+
+      - name: Rebuild GitHub Pages
+        if: steps.changed.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          code=$(curl --retry 3 --retry-delay 3 -sS -o /tmp/pages-response.json -w "%{http_code}" \
+            -L -X POST \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/pages/builds")
+          cat /tmp/pages-response.json
+          echo "Pages API HTTP $code"
+          test "$code" = "201"
