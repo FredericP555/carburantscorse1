@@ -25,8 +25,15 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
-      - name: Validate weekly and monthly aggregation
-        run: python scripts/validate_aggregations.py
+      - name: Build append-only candidate
+        run: python scripts/update_data_append.py --input data.json --output data-candidate.json
 
-      - name: Keep validation red during methodology diagnostics
-        run: exit 1
+      - name: Validate candidate
+        run: python scripts/validate_candidate.py
+
+      - name: Upload candidate data.json
+        uses: actions/upload-artifact@v4
+        with:
+          name: candidate-data-json
+          path: data-candidate.json
+          retention-days: 7
