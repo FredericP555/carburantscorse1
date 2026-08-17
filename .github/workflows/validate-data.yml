@@ -28,6 +28,10 @@ jobs:
       - name: Regenerate current year and validate overlap
         run: python scripts/update_data_v2.py --input data.json --output data-new.json
 
+      - name: Diagnose discrepancies
+        if: failure()
+        run: python scripts/diagnose_overlap.py
+
       - name: Show resulting file size
         if: always()
         run: ls -lh data.json data-new.json || true
