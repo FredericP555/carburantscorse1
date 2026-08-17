@@ -1,1 +1,0 @@
-stage automation candidate
