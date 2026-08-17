@@ -25,8 +25,8 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
-      - name: Inspect station-level Gazole outliers
-        run: python scripts/inspect_station_outliers.py
+      - name: Check continuity at published cutoff
+        run: python scripts/check_recent_overlap.py
 
       - name: Keep validation red during methodology diagnostics
         run: exit 1
