@@ -1,0 +1,1 @@
+test Pages rebuild permission
