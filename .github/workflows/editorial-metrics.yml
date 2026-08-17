@@ -1,0 +1,17 @@
+name: Check editorial metrics
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Recover current editorial formulas
+        run: python scripts/check_editorial_metrics.py
