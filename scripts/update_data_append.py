@@ -87,6 +87,23 @@ def validate_shape(data: dict):
 def append_data(old: dict, generated: dict):
     old_cutoff = validate_shape(old)
     cutoff_date = ORIGIN + timedelta(days=old_cutoff)
+
+    generated_ends = set()
+    for fuel in ("G", "S"):
+        for name in SERIES:
+            pts = generated[fuel][name]["d"]
+            if not pts:
+                raise RuntimeError(f"Generated daily series is empty: {fuel}/{name}")
+            generated_ends.add(pts[-1][0])
+    if len(generated_ends) != 1:
+        raise RuntimeError(f"Generated daily series do not share one cutoff: {sorted(generated_ends)}")
+    generated_cutoff = next(iter(generated_ends))
+
+    # A repeated manual run on the same day must be a clean no-op, not a failure.
+    if generated_cutoff <= old_cutoff:
+        print(f"NO_NEW_DATA — published history already reaches {cutoff_date}")
+        return json.loads(json.dumps(old)), old_cutoff, old_cutoff
+
     first_new = old_cutoff + 1
     first_week = monday_offset(first_new)
     first_month = month_key(first_new)
@@ -144,7 +161,7 @@ def verify_immutability(old: dict, candidate: dict, old_cutoff: int):
             cand_d = candidate[fuel][name]["d"]
             if cand_d[:len(old_d)] != old_d:
                 raise RuntimeError(f"IMMUTABILITY FAILURE {fuel}/{name}")
-            if cand_d[len(old_d)][0] != old_cutoff + 1:
+            if len(cand_d) > len(old_d) and cand_d[len(old_d)][0] != old_cutoff + 1:
                 raise RuntimeError(f"Missing first new day for {fuel}/{name}")
     print("Immutability check: OK — every published daily point is unchanged")
 
