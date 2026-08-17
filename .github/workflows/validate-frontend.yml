@@ -1,0 +1,38 @@
+name: Validate automated dashboard in browser
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  browser-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check automation JavaScript syntax
+        run: node --check automation.js
+      - name: Start local static server
+        run: |
+          python3 -m http.server 8000 > /tmp/a4c-http.log 2>&1 &
+          sleep 2
+      - name: Render dashboard with headless Chrome
+        run: |
+          CHROME=$(command -v google-chrome || command -v chromium || command -v chromium-browser)
+          if [ -z "$CHROME" ]; then
+            echo "Chrome/Chromium not available on runner"
+            exit 1
+          fi
+          "$CHROME" --headless --no-sandbox --disable-gpu --virtual-time-budget=8000 --dump-dom http://127.0.0.1:8000/ > /tmp/rendered.html
+      - name: Verify dynamic date and editorial content
+        run: |
+          grep -q "CLASSEMENT AU 16 AOÛT 2026" /tmp/rendered.html
+          grep -q "Janvier 2022 – Août 2026" /tmp/rendered.html
+          grep -q "14,6" /tmp/rendered.html
+          grep -q "23 juillet 2026" /tmp/rendered.html
+          grep -q "55" /tmp/rendered.html
+          echo "Browser integration test: OK"
