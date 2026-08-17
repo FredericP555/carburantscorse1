@@ -25,23 +25,8 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
-      - name: Build diagnostic candidate
-        run: python scripts/update_data_v2.py --input data.json --output data-new.json --tolerance 0.100
-
-      - name: Compare daily date alignment
-        run: python scripts/compare_candidate.py
+      - name: Inspect station-level Gazole outliers
+        run: python scripts/inspect_station_outliers.py
 
       - name: Keep validation red during methodology diagnostics
         run: exit 1
-
-      - name: Show resulting file size
-        if: always()
-        run: ls -lh data.json data-new.json || true
-
-      - name: Upload candidate data.json
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: candidate-data-json
-          path: data-new.json
-          retention-days: 7
