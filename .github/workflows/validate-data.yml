@@ -25,13 +25,18 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
+      - name: Inspect official XML structure
+        run: python scripts/debug_xml.py
+
       - name: Regenerate current year and validate overlap
         run: python scripts/update_data.py --input data.json --output data-new.json
 
       - name: Show resulting file size
-        run: ls -lh data.json data-new.json
+        if: always()
+        run: ls -lh data.json data-new.json || true
 
       - name: Upload candidate data.json
+        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: candidate-data-json
