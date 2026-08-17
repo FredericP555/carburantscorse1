@@ -1,6 +1,8 @@
 name: Validate fuel data generator
 
 on:
+  pull_request:
+    branches: [main]
   workflow_dispatch:
 
 permissions:
