@@ -31,6 +31,12 @@ jobs:
       - name: Validate candidate
         run: python scripts/validate_candidate.py
 
+      - name: Add dynamic bouclier and editorial metadata
+        run: python scripts/enrich_data_meta.py --input data-candidate.json
+
+      - name: Validate metadata
+        run: python scripts/validate_meta.py
+
       - name: Upload candidate data.json
         uses: actions/upload-artifact@v4
         with:
