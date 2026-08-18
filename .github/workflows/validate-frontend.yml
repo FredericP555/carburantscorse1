@@ -15,8 +15,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Check automation JavaScript syntax
-        run: node --check automation.js
+      - name: Check dashboard JavaScript syntax
+        run: |
+          node --check automation.js
+          node --check editorial-patch.js
 
       - name: Build expected dynamic labels from data.json
         run: |
@@ -25,9 +27,8 @@ jobs:
           d=json.load(open('data.json',encoding='utf-8'))
           y,m,day=map(int,d['meta']['last_date'].split('-'))
           months=['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre']
-          month_caps=['Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre']
           print('LAST_UPPER="'+f'{day} {months[m-1]} {y}'.upper()+'"')
-          print('MONTH_YEAR="'+f'{month_caps[m-1]} {y}'+'"')
+          print('MONTH_YEAR_LOWER="'+f'{months[m-1]} {y}'+'"')
           gap=d['meta']['editorial']['Gazole']['observed_ytd_gap']
           print('GAP="'+f'{gap:+.1f}'.replace('.',',')+'"')
           PY
@@ -52,15 +53,20 @@ jobs:
         run: |
           "${{ steps.chrome.outputs.path }}" --headless --no-sandbox --disable-gpu --window-size=1280,900 --virtual-time-budget=8000 --dump-dom http://127.0.0.1:8000/ > /tmp/desktop.html
 
-      - name: Verify wide desktop uses full period
+      - name: Verify wide desktop uses full period and editorial flow
         run: |
           source /tmp/expected.env
           grep -q "CLASSEMENT AU $LAST_UPPER" /tmp/desktop.html
-          grep -q "Janvier 2022 – $MONTH_YEAR" /tmp/desktop.html
+          grep -q "Historique disponible : janvier 2022 – $MONTH_YEAR_LOWER" /tmp/desktop.html
           grep -q "$GAP" /tmp/desktop.html
           ! grep -q "CLASSEMENT AU 28 MAI 2026" /tmp/desktop.html
           grep -E -q 'id="periodControl"[^>]*display: none' /tmp/desktop.html
-          echo "Wide desktop integration: OK"
+          grep -q 'class="analyse-flow"' /tmp/desktop.html
+          grep -q 'column-count:2' /tmp/desktop.html
+          grep -q '2 — EFFETS DES ACTIONS TOTALENERGIES' /tmp/desktop.html
+          grep -q '20 mars–6 avril 2026' /tmp/desktop.html
+          grep -q '8 avril–27 mai 2026' /tmp/desktop.html
+          echo "Wide desktop integration and editorial flow: OK"
 
       - name: Render mobile portrait dashboard
         run: |
@@ -91,6 +97,7 @@ jobs:
         run: |
           grep -E -q 'id="periodControl"[^>]*display: flex' /tmp/iframe-835.html
           grep -q '12 derniers mois' /tmp/iframe-835.html
+          grep -q 'class="analyse-flow"' /tmp/iframe-835.html
           echo "835px iframe integration: OK"
 
       - name: Render classic 1000px embed with sidebar
