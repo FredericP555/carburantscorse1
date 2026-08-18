@@ -9,6 +9,26 @@ assert meta.get('last_date'), 'missing meta.last_date'
 assert meta.get('update_policy')=='append-only'
 assert meta.get('editorial_action_rule')=='union-of-gazole-and-sp95-total-intervention-periods'
 
+station_audit=meta.get('station_audit')
+assert station_audit, 'missing meta.station_audit'
+assert station_audit.get('as_of')==meta['last_date'], 'station audit date differs from candidate cutoff'
+assert station_audit.get('max_ffill_days')==45, 'unexpected station audit freshness window'
+for fuel in ('Gazole','SP95'):
+    a=station_audit['fuels'][fuel]
+    known=a['known_station_fuel_series']
+    reconciled=(a['retained']+a['excluded_stale']+a['excluded_invalid_latest']+a['excluded_no_prior'])
+    assert known==reconciled, f'station audit does not reconcile for {fuel}: {known}!={reconciled}'
+    assert a['declared_current_year']<=known
+    assert a['retained']>0
+    stale_ids=a.get('excluded_stale_ids') or []
+    invalid_ids=a.get('excluded_invalid_ids') or []
+    no_prior_ids=a.get('excluded_no_prior_ids') or []
+    assert len(stale_ids)==a['excluded_stale']
+    assert len(invalid_ids)==a['excluded_invalid_latest']
+    assert len(no_prior_ids)==a['excluded_no_prior']
+    ids=[x['station_id'] for x in stale_ids+invalid_ids+no_prior_ids]
+    assert len(ids)==len(set(ids)), f'duplicate station exclusion reason for {fuel}'
+
 editorial_ranges=None
 for fuel in ('Gazole','SP95'):
     b=meta['bouclier'][fuel]
