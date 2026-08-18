@@ -28,6 +28,7 @@ import urllib.request
 import zipfile
 from collections import defaultdict
 from datetime import date, datetime, timedelta
+from pathlib import Path
 import xml.etree.ElementTree as ET
 
 import pandas as pd
@@ -37,6 +38,7 @@ FUELS = {"Gazole": "G", "SP95": "S"}
 MAX_FFILL_DAYS = 45
 PRICE_MIN = 1.10
 PRICE_MAX = 3.00
+CACHE_DIR = Path(".cache/official-fuel")
 
 REGIONS = [
     "Auvergne-Rhône-Alpes","Bourgogne-Franche-Comté","Bretagne",
@@ -73,11 +75,43 @@ def annual_url(year: int) -> str:
 
 
 def download(year: int) -> bytes:
+    """Download one annual official ZIP once per workflow process tree.
+
+    The price generator and the bouclier detector run as separate Python commands in the same
+    GitHub Actions workspace. A tiny on-disk cache avoids downloading the ~hundreds-of-MB
+    annual archives a second time during the same run. The runner is ephemeral, so the current
+    annual stock is still freshly downloaded at every weekly execution.
+    """
+    cache_file = CACHE_DIR / f"PrixCarburants_annuel_{year}.zip"
+    if cache_file.exists():
+        raw = cache_file.read_bytes()
+        try:
+            with zipfile.ZipFile(io.BytesIO(raw)) as zf:
+                if not any(n.lower().endswith(".xml") for n in zf.namelist()):
+                    raise zipfile.BadZipFile("cached ZIP contains no XML")
+            print(f"Using workflow cache {cache_file} ({len(raw):,} bytes)", file=sys.stderr)
+            return raw
+        except zipfile.BadZipFile:
+            print(f"Discarding invalid workflow cache {cache_file}", file=sys.stderr)
+            cache_file.unlink(missing_ok=True)
+
     url = annual_url(year)
     print(f"Downloading {url}", file=sys.stderr)
-    req = urllib.request.Request(url, headers={"User-Agent":"A4C-observatoire/1.2"})
+    req = urllib.request.Request(url, headers={"User-Agent":"A4C-observatoire/1.3"})
     with urllib.request.urlopen(req, timeout=180) as r:
-        return r.read()
+        raw = r.read()
+
+    # Validate before caching so a truncated network response can never poison the second step.
+    with zipfile.ZipFile(io.BytesIO(raw)) as zf:
+        if not any(n.lower().endswith(".xml") for n in zf.namelist()):
+            raise RuntimeError("Official ZIP contains no XML")
+
+    CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    tmp = cache_file.with_suffix(".tmp")
+    tmp.write_bytes(raw)
+    tmp.replace(cache_file)
+    print(f"Cached for this workflow: {cache_file} ({len(raw):,} bytes)", file=sys.stderr)
+    return raw
 
 
 def is_reliable_price(value: float | None) -> bool:
