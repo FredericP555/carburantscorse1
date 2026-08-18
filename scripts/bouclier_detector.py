@@ -229,9 +229,11 @@ def metadata(year: int | None = None) -> dict:
         stats=det[fuel]['stats']
         latest=max(stats) if stats else None
         latest_flag=det[fuel]['flags'].get(latest,False) if latest else False
+        # The text must use the same displayed interval as the graph. This matters when a
+        # prospective run joins continuously onto a frozen historical range (SP95 in 2026).
         active_since=None
-        if latest_flag:
-            for a,b in det[fuel]['detected_ranges']:
+        if latest_flag and latest is not None:
+            for a,b in ranges:
                 if a<=latest<=b:
                     active_since=a
                     break
