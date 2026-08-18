@@ -28,6 +28,9 @@ jobs:
       - name: Verify year-boundary generation window
         run: python scripts/test_year_boundary.py
 
+      - name: Verify shared snapshot year window
+        run: python scripts/test_shared_year_boundary.py
+
       - name: Verify recovered historical editorial method
         run: python scripts/validate_editorial_history.py
 
