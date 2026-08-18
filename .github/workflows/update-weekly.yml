@@ -74,6 +74,36 @@ jobs:
         if: steps.clock.outputs.run == 'true'
         run: python scripts/update_data_append.py --input data.json --output data-candidate.json
 
+      - name: Build shared 13/20 official snapshot
+        if: steps.clock.outputs.run == 'true'
+        run: python scripts/export_shared_c2_snapshot.py
+
+      - name: Publish shared snapshot release
+        if: steps.clock.outputs.run == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="a4c-shared-$(date -u +%Y%m%dT%H%M%SZ)-${GITHUB_RUN_ID}"
+          title="A4C shared official snapshot $(date -u +%Y-%m-%d)"
+          gh release create "$tag" \
+            outputs/shared/official_13_20.csv.gz \
+            outputs/shared/official_13_20.meta.json \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --title "$title" \
+            --notes "Snapshot normalisé 13/20 pour les observatoires A4C. Déclarations officielles brutes uniquement, sans règle métier propre à c1 ou c2." \
+            --latest=false
+
+          # Keep only the eight newest shared snapshots. Cleanup is best-effort so an
+          # immutable-release policy can never block the weekly data publication.
+          gh release list --repo "$GITHUB_REPOSITORY" --limit 100 --json tagName,createdAt \
+            --jq '[.[] | select(.tagName | startswith("a4c-shared-"))] | sort_by(.createdAt) | reverse | .[8:] | .[].tagName' \
+            | while read -r old_tag; do
+                [ -z "$old_tag" ] && continue
+                gh release delete "$old_tag" --repo "$GITHUB_REPOSITORY" --cleanup-tag -y || \
+                  echo "Cleanup skipped for $old_tag"
+              done
+
       - name: Detect whether official data advanced
         if: steps.clock.outputs.run == 'true'
         id: changed
