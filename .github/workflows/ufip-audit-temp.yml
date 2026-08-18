@@ -13,99 +13,55 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
-      - name: Install Selenium
-        run: python -m pip install --quiet selenium
-      - name: Probe UFIP custom download
+      - name: Install audit dependencies
+        run: python -m pip install --quiet requests beautifulsoup4 openpyxl
+      - name: Test direct UFIP Gazole Rotterdam download
         run: |
           cat > /tmp/probe_ufip.py <<'PY'
-          import json, time
-          from pathlib import Path
-          from selenium import webdriver
-          from selenium.webdriver.common.by import By
-          from selenium.webdriver.chrome.options import Options
+          import io, re
+          import requests
+          from bs4 import BeautifulSoup
+          from openpyxl import load_workbook
 
-          outdir=Path('/tmp/ufip-downloads'); outdir.mkdir(exist_ok=True)
-          opts=Options()
-          opts.add_argument('--headless=new')
-          opts.add_argument('--no-sandbox')
-          opts.add_argument('--disable-dev-shm-usage')
-          opts.add_argument('--window-size=1600,1200')
-          opts.set_capability('goog:loggingPrefs', {'performance':'ALL'})
-          opts.add_experimental_option('prefs', {
-              'download.default_directory': str(outdir),
-              'download.prompt_for_download': False,
-              'download.directory_upgrade': True,
-              'safebrowsing.enabled': True,
-          })
-          drv=webdriver.Chrome(options=opts)
-          drv.execute_cdp_cmd('Page.setDownloadBehavior', {'behavior':'allow','downloadPath':str(outdir)})
-          urls=['https://valeurs.ufip.fr/datas/custom','https://www.energiesetmobilites.fr/valeurs/datas/custom']
-          try:
-            loaded=False
-            for url in urls:
-              print('\n=== OPEN',url,'===')
-              drv.get(url)
-              time.sleep(8)
-              body=drv.find_element(By.TAG_NAME,'body').text
-              print('TITLE:',drv.title)
-              print('URL:',drv.current_url)
-              print('BODY:',body[:1600].replace('\n',' | '))
-              forms=drv.find_elements(By.TAG_NAME,'form')
-              print('FORMS',len(forms))
-              for i,f in enumerate(forms):
-                print('FORM',i,'action=',f.get_attribute('action'),'method=',f.get_attribute('method'),'id=',f.get_attribute('id'),'name=',f.get_attribute('name'))
-              inputs=drv.find_elements(By.CSS_SELECTOR,'input,button,select')
-              for i,e in enumerate(inputs):
-                print('FIELD',i,'tag=',e.tag_name,'type=',e.get_attribute('type'),'name=',e.get_attribute('name'),'id=',e.get_attribute('id'),'value=',e.get_attribute('value'),'text=',e.text[:80])
-              if 'Date de début' in body and forms:
-                loaded=True
-                break
-            if not loaded:
-              raise RuntimeError('UFIP form did not load')
+          URL='https://valeurs.ufip.fr/datas/custom'
+          s=requests.Session()
+          s.headers.update({'User-Agent':'A4C-observatoire/1.0 (+automated public-data retrieval)'})
+          g=s.get(URL,timeout=60)
+          print('GET_STATUS',g.status_code)
+          print('GET_CONTENT_TYPE',g.headers.get('content-type'))
+          g.raise_for_status()
+          soup=BeautifulSoup(g.text,'html.parser')
+          token=soup.select_one('input[name="ufp_token"]')
+          if not token or not token.get('value'):
+            raise RuntimeError('ufp_token not found')
+          token=token['value']
+          form=soup.select_one('form#frm-data') or soup.find('form')
+          print('FORM_ACTION',form.get('action') if form else None)
+          print('FORM_METHOD',form.get('method') if form else None)
+          print('TOKEN_LENGTH',len(token))
 
-            date_inputs=[e for e in drv.find_elements(By.CSS_SELECTOR,'input') if (e.get_attribute('type') or '').lower() in ('text','date')]
-            print('DATE_INPUTS',[(e.get_attribute('name'),e.get_attribute('id'),e.get_attribute('value')) for e in date_inputs])
-            if len(date_inputs)>=2:
-              for e,val in zip(date_inputs[:2],['01/08/2026','18/08/2026']):
-                drv.execute_script("arguments[0].value=arguments[1]; arguments[0].dispatchEvent(new Event('change',{bubbles:true}));",e,val)
+          payload={
+            'ufp_token':token,
+            'day_from':'01/08/2026',
+            'day_to':'18/08/2026',
+            'cotations[gazole]':'on',
+          }
+          r=s.post(URL,data=payload,timeout=90,allow_redirects=True)
+          print('POST_STATUS',r.status_code)
+          print('POST_FINAL_URL',r.url)
+          print('POST_CONTENT_TYPE',r.headers.get('content-type'))
+          print('POST_CONTENT_DISPOSITION',r.headers.get('content-disposition'))
+          print('POST_BYTES',len(r.content))
+          r.raise_for_status()
+          if not r.content.startswith(b'PK'):
+            print('POST_PREFIX',r.text[:500].replace('\n',' | '))
+            raise RuntimeError('response is not an XLSX ZIP container')
 
-            checks=drv.find_elements(By.CSS_SELECTOR,'input[type=checkbox]')
-            print('CHECKBOX_COUNT',len(checks))
-            for c in checks:
-              cid=c.get_attribute('id')
-              label=''
-              if cid:
-                ls=drv.find_elements(By.CSS_SELECTOR,f'label[for="{cid}"]')
-                if ls: label=ls[0].text.strip()
-              print('CHECK',c.get_attribute('name'),cid,c.get_attribute('value'),'selected=',c.is_selected(),'label=',label)
-
-            submits=[]
-            for e in drv.find_elements(By.CSS_SELECTOR,'input[type=submit],button[type=submit],button'):
-              text=((e.get_attribute('value') or '')+' '+(e.text or '')).strip()
-              if 'télécharger' in text.lower() or 'telecharger' in text.lower(): submits.append(e)
-            print('SUBMITS',[(e.tag_name,e.get_attribute('name'),e.get_attribute('id'),e.get_attribute('value'),e.text) for e in submits])
-            if not submits: raise RuntimeError('No download submit control found')
-            drv.get_log('performance')
-            submits[0].click()
-            time.sleep(12)
-            logs=drv.get_log('performance')
-            print('\n=== NETWORK REQUESTS AFTER SUBMIT ===')
-            for entry in logs:
-              try:
-                msg=json.loads(entry['message'])['message']
-                if msg['method']!='Network.requestWillBeSent': continue
-                r=msg['params']['request']; u=r.get('url','')
-                if 'ufip' in u or 'energiesetmobilites' in u:
-                  print('REQ',r.get('method'),u)
-                  if r.get('postData'): print('POSTDATA',r['postData'])
-              except Exception:
-                pass
-            print('\n=== DOWNLOADED FILES ===')
-            for p in outdir.iterdir():
-              print(p.name,p.stat().st_size)
-              if p.suffix.lower() in ('.xls','.xlsx','.csv'):
-                print('DOWNLOAD_PATH',p)
-          finally:
-            drv.quit()
+          wb=load_workbook(io.BytesIO(r.content),data_only=True,read_only=True)
+          print('SHEETS',wb.sheetnames)
+          for ws in wb.worksheets:
+            print('SHEET',ws.title,'ROWS',ws.max_row,'COLS',ws.max_column)
+            for row in ws.iter_rows(min_row=1,max_row=min(ws.max_row,12),values_only=True):
+              print('ROW',repr(row))
           PY
           python /tmp/probe_ufip.py
