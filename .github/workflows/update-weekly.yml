@@ -66,6 +66,10 @@ jobs:
         if: steps.clock.outputs.run == 'true'
         run: pip install -r requirements.txt
 
+      - name: Verify recovered historical editorial method
+        if: steps.clock.outputs.run == 'true'
+        run: python scripts/validate_editorial_history.py
+
       - name: Build append-only candidate
         if: steps.clock.outputs.run == 'true'
         run: python scripts/update_data_append.py --input data.json --output data-candidate.json
@@ -109,7 +113,8 @@ jobs:
               status='contraignant' if b['current_active'] else 'non contraignant'
               print(f"\n### {fuel}")
               print(f"- Écart HT moyen depuis janvier : **{e['observed_ytd_gap']:+.1f} c€/L**")
-              print(f"- Hors périodes de bouclier effectif : **{e['outside_effective_gap']:+.1f} c€/L**")
+              print(f"- Hors toute action TotalEnergies : **{e['outside_total_action_gap']:+.1f} c€/L**")
+              print(f"- Pendant les actions TotalEnergies : **{e['during_total_action_gap']:+.1f} c€/L**")
               print(f"- Plafond suivi : **{b['current_cap']:.2f} €/L**, actuellement **{status}**")
               print(f"- Total proches du plafond : **{100*b['latest_near_share']:.0f}%** ({b['latest_total_stations']} stations suivies)")
               print(f"- 75e percentile non-Total Corse : **{b['latest_non_total_p75']:.3f} €/L**")
