@@ -1,15 +1,9 @@
 name: Update fuel observatory weekly
-# Temporary deployment trigger; remove after successful production regeneration.
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - '.github/workflows/update-weekly.yml'
   schedule:
-    # Temporary five-minute slot used only for the first production deployment.
-    - cron: '*/5 * * * *'
-    # Normal weekly slots (UTC), filtered below to 07:00 Europe/Paris.
+    # GitHub cron is UTC. Two slots allow an exact 07:00 Europe/Paris schedule year-round;
+    # the first step keeps only the slot matching the current CET/CEST offset.
     - cron: '0 5 * * 1'
     - cron: '0 6 * * 1'
   workflow_dispatch:
@@ -38,14 +32,13 @@ jobs:
           from datetime import datetime
           from zoneinfo import ZoneInfo
           out=os.environ['GITHUB_OUTPUT']
-          event=os.environ.get('EVENT_NAME')
-          schedule=os.environ.get('EVENT_SCHEDULE','')
-          if event in {'workflow_dispatch','push'} or schedule == '*/5 * * * *':
+          if os.environ.get('EVENT_NAME') == 'workflow_dispatch':
               run=True
           else:
               paris=datetime.now(ZoneInfo('Europe/Paris'))
               offset_hours=int(paris.utcoffset().total_seconds()//3600)
               expected_utc_hour=(7-offset_hours)%24
+              schedule=os.environ.get('EVENT_SCHEDULE','')
               try:
                   scheduled_hour=int(schedule.split()[1])
               except Exception:
@@ -85,8 +78,13 @@ jobs:
         if: steps.clock.outputs.run == 'true'
         id: changed
         shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
         run: |
-          if cmp -s data.json data-candidate.json; then
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            echo "Manual run: refresh audit and metadata even if no new official day."
+          elif cmp -s data.json data-candidate.json; then
             echo "changed=false" >> "$GITHUB_OUTPUT"
             echo "No new official day: clean no-op."
           else
