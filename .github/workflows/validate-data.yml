@@ -25,6 +25,9 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
+      - name: Verify year-boundary generation window
+        run: python scripts/test_year_boundary.py
+
       - name: Verify recovered historical editorial method
         run: python scripts/validate_editorial_history.py
 
