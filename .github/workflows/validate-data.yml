@@ -34,6 +34,25 @@ jobs:
       - name: Build append-only candidate
         run: python scripts/update_data_append.py --input data.json --output data-candidate.json
 
+      - name: Build shared 13/20 official snapshot
+        run: python scripts/export_shared_c2_snapshot.py
+
+      - name: Verify shared snapshot manifest
+        run: |
+          python - <<'PY'
+          import gzip, hashlib, json
+          from pathlib import Path
+          data=Path('outputs/shared/official_13_20.csv.gz')
+          meta=json.loads(Path('outputs/shared/official_13_20.meta.json').read_text(encoding='utf-8'))
+          assert meta['schema']=='a4c-official-13-20-v1'
+          assert meta['rows']>0
+          assert meta['sha256']==hashlib.sha256(data.read_bytes()).hexdigest()
+          with gzip.open(data,'rt',encoding='utf-8') as f:
+              header=f.readline().strip()
+          assert 'station_id' in header and 'price_in_reference_band' in header
+          print('Shared snapshot manifest: OK', meta['rows'], meta['max_date'], data.stat().st_size)
+          PY
+
       - name: Audit Corsica station eligibility
         run: python scripts/station_audit.py --candidate data-candidate.json --previous data.json --write-meta
 
@@ -56,4 +75,5 @@ jobs:
           path: |
             data-candidate.json
             weekly-summary.md
+            outputs/shared/official_13_20.meta.json
           retention-days: 7
