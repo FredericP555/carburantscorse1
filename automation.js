@@ -183,8 +183,9 @@ window.addEventListener('resize',autoViewportChanged);
 window.addEventListener('orientationchange',()=>setTimeout(autoViewportChanged,200));
 
 // ── Analyse éditoriale ───────────────────────────────────────────────────────
-// Historique 2022–2025 inchangé. Partie courante fondée uniquement sur des mesures
-// reproductibles; aucun contrefactuel "sans bouclier" n'est inventé.
+// Méthode historique retrouvée : « hors toute action TotalEnergies » = moyenne des jours
+// où AUCUNE intervention Total n'est active, ni sur le Gazole ni sur le SP95. L'indicateur
+// utilise donc le calendrier commun (union des deux carburants), et non un contrefactuel.
 buildAnalyse=function(){
   const el=document.getElementById('analyse-content'); if(!el) return;
   const d=ANALYSE[carbu]; if(!d) return;
@@ -202,20 +203,26 @@ buildAnalyse=function(){
 
   if(!e) {
     el.innerHTML=historique+col('2 — EFFETS DES ACTIONS TOTALENERGIES',
-      `Les remises carburant (sept.–déc. 2022, −20 c/L puis −10 c/L) et les périodes d'activation du bouclier tarifaire ont atténué l'écart. En 2022, grâce aux remises, l'écart annuel moyen ${c} est tombé à <strong>+${d.effet.avec2022} c€/L</strong> au lieu de +${d.effet.sans2022} c€/L sans intervention — un gain de <strong>${d.effet.gain2022} c€/L</strong>.`,
+      `Les remises carburant (sept.–déc. 2022, −20 c/L puis −10 c/L) et les périodes d'activation du bouclier tarifaire ont atténué l'écart. En 2022, grâce aux remises, l'écart annuel moyen ${c} est tombé à <strong>+${d.effet.avec2022} c€/L</strong> au lieu de +${d.effet.sans2022} c€/L hors toute action TotalEnergies — un gain de <strong>${d.effet.gain2022} c€/L</strong>.`,
       'Données courantes non encore disponibles.');
     return;
   }
 
   const through=autoDateFr(e.through);
   const p75=b?.latest_non_total_p75;
+  const outsideGap=e.outside_total_action_gap ?? e.outside_effective_gap;
+  const duringGap=e.during_total_action_gap ?? e.during_effective_gap;
   const currentStatus=e.current_active
     ? `Le bouclier est <strong>actuellement détecté comme contraignant depuis le ${autoDateFr(e.current_active_since)}</strong> : au dernier relevé, <strong>${Math.round((e.latest_near_share||0)*100)} %</strong> des <strong>${e.latest_total_stations}</strong> stations TotalEnergies suivies sont à moins de 1,5 c€/L du plafond de <strong>${autoNumberFr(e.current_cap,2)} €/L</strong>${p75!=null?`, tandis que le 75e percentile des stations corses non‑Total atteint <strong>${autoNumberFr(p75,3)} €/L</strong>`:''}.`
     : `Au ${through}, le plafond TotalEnergies est en vigueur mais <strong>n'est pas détecté comme économiquement contraignant</strong> par la combinaison « prix Total au plafond + pression du reste du marché corse ».`;
 
+  const splitText=outsideGap!=null
+    ? `Hors toute période d'action TotalEnergies — c'est-à-dire les jours où aucune action n'est active ni sur le gazole ni sur le SP95 — l'écart moyen atteint <strong>${autoNumberFr(outsideGap,1,true)} c€/L</strong>${duringGap!=null?`; pendant les périodes d'action TotalEnergies, il est de <strong>${autoNumberFr(duringGap,1,true)} c€/L</strong>`:''}.`
+    : '';
+
   const courant=col('2 — EFFETS DES ACTIONS TOTALENERGIES',
-    `Les remises carburant (sept.–déc. 2022, −20 c/L puis −10 c/L) ont nettement réduit l'écart : en 2022, l'écart annuel moyen ${c} est tombé à <strong>+${d.effet.avec2022} c€/L</strong> au lieu de +${d.effet.sans2022} c€/L hors remise. En ${e.year}, jusqu'au ${through}, l'écart moyen observé s'établit à <strong>${autoNumberFr(e.observed_ytd_gap,1,true)} c€/L</strong>. Hors périodes où le bouclier est détecté comme effectivement contraignant, il atteint <strong>${autoNumberFr(e.outside_effective_gap,1,true)} c€/L</strong>. ${currentStatus}`,
-    'Détection prospective depuis le 29 mai 2026 : ≥20 % des Total à moins de 1,5 c€/L du plafond ET 75e percentile des stations corses non‑Total au niveau ou au-dessus du plafond ; épisodes courts stabilisés. Les anciennes zones restent figées.');
+    `Les remises carburant (sept.–déc. 2022, −20 c/L puis −10 c/L) ont nettement réduit l'écart : en 2022, l'écart annuel moyen ${c} est tombé à <strong>+${d.effet.avec2022} c€/L</strong> au lieu de +${d.effet.sans2022} c€/L hors toute action TotalEnergies. En ${e.year}, jusqu'au ${through}, l'écart moyen observé s'établit à <strong>${autoNumberFr(e.observed_ytd_gap,1,true)} c€/L</strong>. ${splitText} ${currentStatus}`,
+    '« Hors toute action TotalEnergies » : moyenne des écarts journaliers HT des jours où aucune intervention Total n’est active sur aucun des deux carburants. Le bouclier prospectif reste détecté selon la règle économique documentée ; les anciennes zones sont figées.');
 
   el.innerHTML=historique+courant;
 };
