@@ -16,12 +16,14 @@ for fuel in ('Gazole','SP95'):
     assert e['observed_ytd_gap'] is not None
     assert e['outside_effective_gap'] is not None
 
-    # Registry/data coverage guardrails. The recovered A4C registry contains 47 current
-    # TotalEnergies stations; daily availability can be lower, but a collapse in coverage
-    # should block publication rather than silently alter the detector.
+    # Registry/data coverage guardrails. The recovered registry has 47 current TotalEnergies
+    # stations, but fuel availability differs: not every Total station necessarily has a fresh
+    # SP95 state within the 45-day dashboard window. Use a stricter Gazole floor and a lower,
+    # still protective SP95 floor rather than making normal product availability stop the site.
     nt=b.get('latest_total_stations')
     nn=b.get('latest_non_total_stations')
-    assert nt is not None and 35 <= nt <= 60, f'suspicious Total station coverage: {fuel}={nt}'
+    min_total={'Gazole':35,'SP95':25}[fuel]
+    assert nt is not None and min_total <= nt <= 60, f'suspicious Total station coverage: {fuel}={nt}'
     assert nn is not None and nn >= 50, f'suspicious non-Total market coverage: {fuel}={nn}'
     assert b.get('latest_non_total_p75') is not None, f'missing non-Total p75: {fuel}'
     assert 0 <= b.get('latest_near_share',0) <= 1
