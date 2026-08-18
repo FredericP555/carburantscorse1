@@ -1,6 +1,10 @@
 name: Update fuel observatory weekly
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/update-weekly.yml'
   schedule:
     # GitHub cron is UTC. Two slots allow an exact 07:00 Europe/Paris schedule year-round;
     # the first step keeps only the slot matching the current CET/CEST offset.
@@ -32,7 +36,7 @@ jobs:
           from datetime import datetime
           from zoneinfo import ZoneInfo
           out=os.environ['GITHUB_OUTPUT']
-          if os.environ.get('EVENT_NAME') == 'workflow_dispatch':
+          if os.environ.get('EVENT_NAME') in {'workflow_dispatch','push'}:
               run=True
           else:
               paris=datetime.now(ZoneInfo('Europe/Paris'))
