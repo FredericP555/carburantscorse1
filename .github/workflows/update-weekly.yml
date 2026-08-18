@@ -105,43 +105,7 @@ jobs:
 
       - name: Write readable weekly summary
         if: steps.clock.outputs.run == 'true' && steps.changed.outputs.changed == 'true'
-        run: |
-          python - <<'PY' >> "$GITHUB_STEP_SUMMARY"
-          import json
-          d=json.load(open('data-candidate.json',encoding='utf-8'))
-          m=d['meta']
-          print(f"## Observatoire A4C — {m['last_date']}")
-          for fuel in ('Gazole','SP95'):
-              b=m['bouclier'][fuel]
-              e=m['editorial'][fuel]
-              status='contraignant' if b['current_active'] else 'non contraignant'
-              print(f"\n### {fuel}")
-              print(f"- Écart HT moyen depuis janvier : **{e['observed_ytd_gap']:+.1f} c€/L**")
-              print(f"- Hors toute action TotalEnergies : **{e['outside_total_action_gap']:+.1f} c€/L**")
-              print(f"- Pendant les actions TotalEnergies : **{e['during_total_action_gap']:+.1f} c€/L**")
-              print(f"- Plafond suivi : **{b['current_cap']:.2f} €/L**, actuellement **{status}**")
-              print(f"- Total proches du plafond : **{100*b['latest_near_share']:.0f}%** ({b['latest_total_stations']} stations suivies)")
-              print(f"- 75e percentile non-Total Corse : **{b['latest_non_total_p75']:.3f} €/L**")
-
-          print("\n## Nettoyage des stations corses")
-          audit=m['station_audit']
-          print(f"État au **{audit['as_of']}**, forward-fill maximal **{audit['max_ffill_days']} jours**.")
-          for fuel in ('Gazole','SP95'):
-              a=audit['fuels'][fuel]
-              print(f"\n### {fuel}")
-              print(f"- Séries station-carburant connues (stocks N-1/N) : **{a['known_station_fuel_series']}**")
-              print(f"- Ayant déclaré au moins une fois cette année : **{a['declared_current_year']}**")
-              print(f"- Retenues dans la moyenne du dernier jour : **{a['retained']}**")
-              print(f"- Exclues car dernier prix trop ancien : **{a['excluded_stale']}**")
-              print(f"- Exclues car dernier prix invalide : **{a['excluded_invalid_latest']}**")
-              if a['excluded_invalid_ids']:
-                  ids=', '.join(x['station_id'] for x in a['excluded_invalid_ids'])
-                  print(f"- IDs avec dernier prix invalide : `{ids}`")
-              if a['excluded_stale_ids']:
-                  ids=', '.join(x['station_id'] for x in a['excluded_stale_ids'][:20])
-                  suffix=' …' if len(a['excluded_stale_ids'])>20 else ''
-                  print(f"- IDs trop anciens (20 max affichés) : `{ids}{suffix}`")
-          PY
+        run: python scripts/weekly_summary.py --input data-candidate.json >> "$GITHUB_STEP_SUMMARY"
 
       - name: Replace data.json
         if: steps.clock.outputs.run == 'true' && steps.changed.outputs.changed == 'true'
