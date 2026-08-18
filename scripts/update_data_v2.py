@@ -1,20 +1,33 @@
 #!/usr/bin/env python3
-"""Rebuild only the current-year portion of data.json from official annual XML stocks.
+"""Generate current-year regional daily fuel prices from the official annual XML stock.
 
-Safety: nothing is written unless the overlap already present in data.json validates.
-Historical years before the selected year are preserved unchanged.
+This module is the shared numerical core used by the weekly append-only updater and by the
+TotalEnergies ceiling detector.
+
+Method for carburantscorse1:
+- Gazole + SP95;
+- motorway stations (pop=A) excluded;
+- last declaration of a station/fuel/day wins;
+- forward-fill limited to 45 days, as in the published dashboard methodology;
+- suspicious prices < 1.10 €/L or > 3.00 €/L are flagged by state and excluded from means
+  until the station publishes a subsequent valid value; they are never silently corrected;
+- station means are computed by region; "moy_regions" is the equal-weight mean of the 12
+  mainland regional means;
+- Corse HT uses 13% VAT, mainland HT 20%.
+
+The 1.10–3.00 reliability band and the no-auto-correction principle come from the recovered
+A4C methodological project saved on 14 June 2026. The 45-day fill remains specific to this
+published Corse-vs-regions dashboard; the separate Corse-vs-BdR project used longer,
+territory-specific reliability thresholds and is not silently substituted here.
 """
 from __future__ import annotations
 
-import argparse
 import io
-import json
 import sys
 import urllib.request
 import zipfile
 from collections import defaultdict
 from datetime import date, datetime, timedelta
-from pathlib import Path
 import xml.etree.ElementTree as ET
 
 import pandas as pd
@@ -22,6 +35,9 @@ import pandas as pd
 ORIGIN = date(2022, 1, 1)
 FUELS = {"Gazole": "G", "SP95": "S"}
 MAX_FFILL_DAYS = 45
+PRICE_MIN = 1.10
+PRICE_MAX = 3.00
+
 REGIONS = [
     "Auvergne-Rhône-Alpes","Bourgogne-Franche-Comté","Bretagne",
     "Centre-Val de Loire","Grand Est","Hauts-de-France","Île-de-France",
@@ -59,13 +75,23 @@ def annual_url(year: int) -> str:
 def download(year: int) -> bytes:
     url = annual_url(year)
     print(f"Downloading {url}", file=sys.stderr)
-    req = urllib.request.Request(url, headers={"User-Agent":"A4C-observatoire/1.1"})
+    req = urllib.request.Request(url, headers={"User-Agent":"A4C-observatoire/1.2"})
     with urllib.request.urlopen(req, timeout=180) as r:
         return r.read()
 
 
+def is_reliable_price(value: float | None) -> bool:
+    return value is not None and PRICE_MIN <= value <= PRICE_MAX
+
+
 def parse_year(year: int):
-    """Map (station, region, fuel) -> chronological price updates."""
+    """Map (station, region, fuel) -> chronological updates.
+
+    An aberrant numeric declaration is retained as an update whose value is ``None``. This is
+    important: the bad declaration must stop the previous price from being carried forward,
+    rather than being ignored as though it never occurred. A later valid declaration resumes
+    the station's contribution to averages.
+    """
     raw = download(year)
     zf = zipfile.ZipFile(io.BytesIO(raw))
     name = next((n for n in zf.namelist() if n.lower().endswith(".xml")), None)
@@ -73,10 +99,8 @@ def parse_year(year: int):
         raise RuntimeError("Official ZIP contains no XML")
 
     out = defaultdict(list)
-    price_rows = 0
-    accepted = 0
-    min_ts = None
-    max_ts = None
+    price_rows = valid_rows = aberrant_rows = 0
+    min_ts = max_ts = None
     with zf.open(name) as fh:
         for _, elem in ET.iterparse(fh, events=("end",)):
             if elem.tag.rsplit("}", 1)[-1] != "pdv":
@@ -90,24 +114,30 @@ def parse_year(year: int):
             for p in list(elem):
                 if p.tag.rsplit("}", 1)[-1] != "prix":
                     continue
-                price_rows += 1
                 fuel = p.attrib.get("nom")
                 if fuel not in FUELS:
                     continue
+                price_rows += 1
                 try:
-                    # Official files now use ISO 8601 with a T separator.
                     ts = datetime.fromisoformat(p.attrib["maj"])
-                    value = float(p.attrib["valeur"])
+                    raw_value = float(p.attrib["valeur"])
                 except (KeyError, ValueError):
                     continue
-                if not (0.5 <= value <= 4.0):
-                    continue
+                value = raw_value if is_reliable_price(raw_value) else None
+                if value is None:
+                    aberrant_rows += 1
+                else:
+                    valid_rows += 1
                 out[(sid, region, fuel)].append((ts, value))
-                accepted += 1
                 min_ts = ts if min_ts is None or ts < min_ts else min_ts
                 max_ts = ts if max_ts is None or ts > max_ts else max_ts
             elem.clear()
-    print(f"{year}: accepted {accepted:,} Gazole/SP95 rows; dates {min_ts} -> {max_ts}", file=sys.stderr)
+
+    print(
+        f"{year}: {price_rows:,} Gazole/SP95 rows; valid={valid_rows:,}; "
+        f"aberrant={aberrant_rows:,}; dates {min_ts} -> {max_ts}",
+        file=sys.stderr,
+    )
     return out
 
 
@@ -123,9 +153,9 @@ def build_daily(year: int) -> pd.DataFrame:
     sums = defaultdict(float)
     counts = defaultdict(int)
 
-    for (sid, region, fuel), vals in changes.items():
+    for (_sid, region, fuel), vals in changes.items():
         vals.sort(key=lambda x: x[0])
-        # Last declared price of each calendar day wins.
+        # Last declaration of the calendar day wins, including an aberrant declaration.
         per_day = {}
         for ts, value in vals:
             per_day[ts.date()] = (ts, value)
@@ -145,27 +175,30 @@ def build_daily(year: int) -> pd.DataFrame:
             while j < len(updates) and updates[j][0].date() <= d:
                 last_ts, last_value = updates[j]
                 j += 1
-            if last_ts is None or last_value is None:
+            if last_ts is None:
                 continue
             if (d - last_ts.date()).days > MAX_FFILL_DAYS:
+                continue
+            if last_value is None:
+                # An explicitly suspect price was the latest declaration: exclude this station
+                # until it publishes a subsequent valid value.
                 continue
             k = (fuel, region, d)
             sums[k] += last_value
             counts[k] += 1
 
     rows = []
-    mainland_regions = REGIONS
     for fuel in FUELS:
         for stamp in days:
             d = stamp.date()
             means = {}
-            for region in ["corse"] + mainland_regions:
+            for region in ["corse"] + REGIONS:
                 k = (fuel, region, d)
                 if counts[k]:
                     means[region] = sums[k] / counts[k]
-            vals = [means[r] for r in mainland_regions if r in means]
-            if vals:
-                means["moy_regions"] = sum(vals) / len(vals)
+            mainland = [means[r] for r in REGIONS if r in means]
+            if mainland:
+                means["moy_regions"] = sum(mainland) / len(mainland)
             for region, ttc in means.items():
                 vat = 1.13 if region == "corse" else 1.20
                 rows.append((fuel, region, pd.Timestamp(d), ttc, ttc / vat))
@@ -212,63 +245,3 @@ def payload(df: pd.DataFrame):
                 "d":make_series(f, region, "d"),
             }
     return out
-
-
-def validate(old: dict, new: dict, year: int, tolerance: float) -> bool:
-    cut = (date(year,1,1) - ORIGIN).days
-    failures = []
-    print("Validation against existing current-year daily TTC:", file=sys.stderr)
-    for fuel in ("G","S"):
-        for region in ["corse","moy_regions"] + REGIONS:
-            om = {p[0]:p[1] for p in old[fuel][region]["d"] if p[0] >= cut}
-            nm = {p[0]:p[1] for p in new[fuel][region]["d"] if p[0] in om}
-            diffs = [abs(nm[k]-om[k]) for k in nm if nm[k] is not None and om[k] is not None]
-            if not diffs:
-                failures.append(f"{fuel}/{region}: no overlap")
-                continue
-            mae = sum(diffs)/len(diffs)
-            mx = max(diffs)
-            print(f"  {fuel} {region:28} n={len(diffs):3d} MAE={mae:.4f} max={mx:.4f}", file=sys.stderr)
-            if mx > tolerance:
-                failures.append(f"{fuel}/{region}: max Δ={mx:.3f} €/L > {tolerance:.3f}")
-    if failures:
-        print("VALIDATION FAILED", file=sys.stderr)
-        for f in failures:
-            print(" - "+f, file=sys.stderr)
-        return False
-    print("VALIDATION OK", file=sys.stderr)
-    return True
-
-
-def merge(old: dict, new: dict, year: int):
-    out = json.loads(json.dumps(old))
-    dcut = (date(year,1,1)-ORIGIN).days
-    jan1 = date(year,1,1)
-    wcut = ((jan1-timedelta(days=jan1.weekday()))-ORIGIN).days
-    mcut = f"{year:04d}-01"
-    for fuel in ("G","S"):
-        for region, series in new[fuel].items():
-            out[fuel][region]["d"] = [p for p in out[fuel][region]["d"] if p[0] < dcut] + series["d"]
-            out[fuel][region]["w"] = [p for p in out[fuel][region]["w"] if p[0] < wcut] + series["w"]
-            out[fuel][region]["m"] = [p for p in out[fuel][region]["m"] if p[0] < mcut] + series["m"]
-    return out
-
-
-def main():
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--input", default="data.json")
-    ap.add_argument("--output", default="data-new.json")
-    ap.add_argument("--year", type=int, default=date.today().year)
-    ap.add_argument("--tolerance", type=float, default=0.010)
-    args = ap.parse_args()
-    old = json.loads(Path(args.input).read_text(encoding="utf-8"))
-    new = payload(build_daily(args.year))
-    if not validate(old, new, args.year, args.tolerance):
-        return 2
-    merged = merge(old, new, args.year)
-    Path(args.output).write_text(json.dumps(merged, ensure_ascii=False, separators=(",",":")), encoding="utf-8")
-    print(f"Wrote {args.output}", file=sys.stderr)
-    return 0
-
-if __name__ == "__main__":
-    raise SystemExit(main())
