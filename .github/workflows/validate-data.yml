@@ -25,6 +25,9 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
+      - name: Verify recovered historical editorial method
+        run: python scripts/validate_editorial_history.py
+
       - name: Build append-only candidate
         run: python scripts/update_data_append.py --input data.json --output data-candidate.json
 
