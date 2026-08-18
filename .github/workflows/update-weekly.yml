@@ -1,0 +1,136 @@
+name: Update fuel observatory weekly
+
+on:
+  schedule:
+    # GitHub cron is UTC. Two slots allow an exact 07:00 Europe/Paris schedule year-round;
+    # the first step keeps only the slot matching the current CET/CEST offset.
+    - cron: '0 5 * * 1'
+    - cron: '0 6 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pages: write
+
+concurrency:
+  group: weekly-fuel-observatory
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Select the 07:00 Europe/Paris slot
+        id: clock
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          EVENT_SCHEDULE: ${{ github.event.schedule }}
+        run: |
+          python - <<'PY'
+          import os
+          from datetime import datetime
+          from zoneinfo import ZoneInfo
+          out=os.environ['GITHUB_OUTPUT']
+          if os.environ.get('EVENT_NAME') == 'workflow_dispatch':
+              run=True
+          else:
+              paris=datetime.now(ZoneInfo('Europe/Paris'))
+              offset_hours=int(paris.utcoffset().total_seconds()//3600)
+              expected_utc_hour=(7-offset_hours)%24
+              schedule=os.environ.get('EVENT_SCHEDULE','')
+              try:
+                  scheduled_hour=int(schedule.split()[1])
+              except Exception:
+                  scheduled_hour=-1
+              run=(scheduled_hour==expected_utc_hour)
+          with open(out,'a',encoding='utf-8') as f:
+              f.write(f"run={'true' if run else 'false'}\n")
+          print('Run selected:',run)
+          PY
+
+      - name: Checkout main
+        if: steps.clock.outputs.run == 'true'
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Set up Python
+        if: steps.clock.outputs.run == 'true'
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+
+      - name: Install dependencies
+        if: steps.clock.outputs.run == 'true'
+        run: pip install -r requirements.txt
+
+      - name: Verify recovered historical editorial method
+        if: steps.clock.outputs.run == 'true'
+        run: python scripts/validate_editorial_history.py
+
+      - name: Build append-only candidate
+        if: steps.clock.outputs.run == 'true'
+        run: python scripts/update_data_append.py --input data.json --output data-candidate.json
+
+      - name: Detect whether official data advanced
+        if: steps.clock.outputs.run == 'true'
+        id: changed
+        shell: bash
+        run: |
+          if cmp -s data.json data-candidate.json; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "No new official day: clean no-op."
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            echo "New official data detected."
+          fi
+
+      - name: Audit Corsica station eligibility
+        if: steps.clock.outputs.run == 'true' && steps.changed.outputs.changed == 'true'
+        run: python scripts/station_audit.py --candidate data-candidate.json --previous data.json --write-meta
+
+      - name: Validate candidate
+        if: steps.clock.outputs.run == 'true' && steps.changed.outputs.changed == 'true'
+        run: python scripts/validate_candidate.py
+
+      - name: Add dynamic bouclier and editorial metadata
+        if: steps.clock.outputs.run == 'true' && steps.changed.outputs.changed == 'true'
+        run: python scripts/enrich_data_meta.py --input data-candidate.json
+
+      - name: Validate metadata
+        if: steps.clock.outputs.run == 'true' && steps.changed.outputs.changed == 'true'
+        run: python scripts/validate_meta.py
+
+      - name: Write readable weekly summary
+        if: steps.clock.outputs.run == 'true' && steps.changed.outputs.changed == 'true'
+        run: python scripts/weekly_summary.py --input data-candidate.json >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Replace data.json
+        if: steps.clock.outputs.run == 'true' && steps.changed.outputs.changed == 'true'
+        run: mv data-candidate.json data.json
+
+      - name: Commit updated data
+        if: steps.clock.outputs.run == 'true' && steps.changed.outputs.changed == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data.json
+          git commit -m "Update fuel data $(date -u +%Y-%m-%d)"
+          git push origin main
+
+      - name: Rebuild GitHub Pages
+        if: steps.clock.outputs.run == 'true' && steps.changed.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          code=$(curl --retry 3 --retry-delay 3 -sS -o /tmp/pages-response.json -w "%{http_code}" \
+            -L -X POST \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/pages/builds")
+          cat /tmp/pages-response.json
+          echo "Pages API HTTP $code"
+          test "$code" = "201"

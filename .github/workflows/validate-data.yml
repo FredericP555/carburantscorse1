@@ -1,0 +1,59 @@
+name: Validate fuel data generator
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout automation branch
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Verify year-boundary generation window
+        run: python scripts/test_year_boundary.py
+
+      - name: Verify recovered historical editorial method
+        run: python scripts/validate_editorial_history.py
+
+      - name: Build append-only candidate
+        run: python scripts/update_data_append.py --input data.json --output data-candidate.json
+
+      - name: Audit Corsica station eligibility
+        run: python scripts/station_audit.py --candidate data-candidate.json --previous data.json --write-meta
+
+      - name: Validate candidate
+        run: python scripts/validate_candidate.py
+
+      - name: Add dynamic bouclier and editorial metadata
+        run: python scripts/enrich_data_meta.py --input data-candidate.json
+
+      - name: Validate metadata
+        run: python scripts/validate_meta.py
+
+      - name: Render weekly summary
+        run: python scripts/weekly_summary.py --input data-candidate.json > weekly-summary.md
+
+      - name: Upload candidate and audit summary
+        uses: actions/upload-artifact@v4
+        with:
+          name: candidate-data-json
+          path: |
+            data-candidate.json
+            weekly-summary.md
+          retention-days: 7
