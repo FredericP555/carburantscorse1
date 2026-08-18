@@ -62,15 +62,33 @@ Le mécanisme de curseur récupéré dans les fichiers `app (2).js` / `index (2)
 
 ## Analyse éditoriale automatisée
 
-L'analyse historique 2022–2025 reste celle déjà publiée. Pour l'année en cours, le texte est alimenté automatiquement par des indicateurs reproductibles :
+La méthode historique de l'indicateur **« hors toute action TotalEnergies »** a été reconstituée exactement.
+
+Pour chaque jour, l'écart est calculé en HT entre la moyenne Corse et la **moyenne à poids égal des 12 moyennes régionales**. Puis les jours sont séparés en deux catégories :
+
+- **pendant action TotalEnergies** : une intervention Total est active sur **au moins un des deux carburants**, Gazole ou SP95 ;
+- **hors toute action TotalEnergies** : aucune intervention Total n'est active ce jour-là, ni sur le Gazole ni sur le SP95.
+
+Le calendrier éditorial est donc l'**union des périodes d'action Gazole et SP95**, et il est identique pour l'analyse des deux carburants. Ce point explique notamment le chiffre Gazole 2023 : retirer uniquement les périodes Gazole donne environ **17,0 c€/L**, alors que retirer l'union Gazole + SP95 redonne le chiffre historique **17,3 c€/L**.
+
+La règle retrouvée reproduit au dixième près tous les chiffres historiques codés dans le dashboard :
+
+- Gazole hors toute action : **15,3 (2022), 17,3 (2023), 18,1 (2024), 18,3 (2025)** ;
+- SP95 hors toute action : **14,2 (2022), 14,3 (2023), 17,2 (2024), 17,3 (2025)** ;
+- bilan jusqu'au 28 mai 2026 : Gazole **17,2 hors / 13,1 pendant**, SP95 **16,0 hors / 10,2 pendant** ;
+- début 2026 avant la première action commune (1er janvier–12 mars) : Gazole **15,3**, SP95 **16,4**.
+
+Ces chiffres sont des **moyennes de jours observés**, pas un contrefactuel où l'on reconstruirait artificiellement ce qu'aurait été le prix sans TotalEnergies.
+
+Pour l'année en cours, `data.json` stocke automatiquement :
 
 - écart HT moyen observé depuis le 1er janvier ;
-- écart HT moyen hors périodes où le bouclier est détecté comme effectivement contraignant ;
-- statut courant du bouclier ;
-- date de début de la période active ;
-- plafond courant, proportion de Total proches du plafond et 75e percentile des stations corses non-Total.
+- écart HT moyen hors toute action TotalEnergies ;
+- écart HT moyen pendant les actions TotalEnergies ;
+- calendrier commun des périodes utilisé pour ce découpage ;
+- statut courant du bouclier du carburant affiché, plafond, proportion de Total proches du plafond et 75e percentile des stations corses non-Total.
 
-Le système n'invente pas de valeur contrefactuelle « sans bouclier » lorsqu'elle ne peut pas être reconstruite de manière vérifiable à partir des données.
+Un test de régression (`scripts/validate_editorial_history.py`) recalcule les chiffres historiques avant chaque validation de l'automatisation. Si la méthode dérive, le workflow échoue au lieu de publier silencieusement un autre indicateur sous le même nom.
 
 ## Mise à jour hebdomadaire
 
@@ -80,7 +98,7 @@ Le workflow `update-weekly.yml` s'exécute chaque **lundi à 07:00 heure de Pari
 2. ajout des seuls jours nouveaux à `data.json` ;
 3. contrôles de cohérence et de couverture ;
 4. détection prospective du bouclier effectif ;
-5. recalcul des indicateurs éditoriaux ;
+5. recalcul des indicateurs éditoriaux selon le calendrier commun d'actions TotalEnergies ;
 6. production d'un résumé lisible dans GitHub Actions ;
 7. commit automatique de `data.json` si les données ont réellement avancé ;
 8. demande explicite de reconstruction de GitHub Pages.
