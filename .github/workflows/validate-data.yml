@@ -43,9 +43,14 @@ jobs:
       - name: Validate metadata
         run: python scripts/validate_meta.py
 
-      - name: Upload candidate data.json
+      - name: Render weekly summary
+        run: python scripts/weekly_summary.py --input data-candidate.json > weekly-summary.md
+
+      - name: Upload candidate and audit summary
         uses: actions/upload-artifact@v4
         with:
           name: candidate-data-json
-          path: data-candidate.json
+          path: |
+            data-candidate.json
+            weekly-summary.md
           retention-days: 7
