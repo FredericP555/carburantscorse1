@@ -19,7 +19,7 @@ concurrency:
 jobs:
   update:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 30
     steps:
       - name: Select the 07:00 Europe/Paris slot
         id: clock
@@ -87,6 +87,10 @@ jobs:
             echo "New official data detected."
           fi
 
+      - name: Audit Corsica station eligibility
+        if: steps.clock.outputs.run == 'true' && steps.changed.outputs.changed == 'true'
+        run: python scripts/station_audit.py --candidate data-candidate.json --previous data.json --write-meta
+
       - name: Validate candidate
         if: steps.clock.outputs.run == 'true' && steps.changed.outputs.changed == 'true'
         run: python scripts/validate_candidate.py
@@ -118,6 +122,25 @@ jobs:
               print(f"- Plafond suivi : **{b['current_cap']:.2f} €/L**, actuellement **{status}**")
               print(f"- Total proches du plafond : **{100*b['latest_near_share']:.0f}%** ({b['latest_total_stations']} stations suivies)")
               print(f"- 75e percentile non-Total Corse : **{b['latest_non_total_p75']:.3f} €/L**")
+
+          print("\n## Nettoyage des stations corses")
+          audit=m['station_audit']
+          print(f"État au **{audit['as_of']}**, forward-fill maximal **{audit['max_ffill_days']} jours**.")
+          for fuel in ('Gazole','SP95'):
+              a=audit['fuels'][fuel]
+              print(f"\n### {fuel}")
+              print(f"- Séries station-carburant connues (stocks N-1/N) : **{a['known_station_fuel_series']}**")
+              print(f"- Ayant déclaré au moins une fois cette année : **{a['declared_current_year']}**")
+              print(f"- Retenues dans la moyenne du dernier jour : **{a['retained']}**")
+              print(f"- Exclues car dernier prix trop ancien : **{a['excluded_stale']}**")
+              print(f"- Exclues car dernier prix invalide : **{a['excluded_invalid_latest']}**")
+              if a['excluded_invalid_ids']:
+                  ids=', '.join(x['station_id'] for x in a['excluded_invalid_ids'])
+                  print(f"- IDs avec dernier prix invalide : `{ids}`")
+              if a['excluded_stale_ids']:
+                  ids=', '.join(x['station_id'] for x in a['excluded_stale_ids'][:20])
+                  suffix=' …' if len(a['excluded_stale_ids'])>20 else ''
+                  print(f"- IDs trop anciens (20 max affichés) : `{ids}{suffix}`")
           PY
 
       - name: Replace data.json
