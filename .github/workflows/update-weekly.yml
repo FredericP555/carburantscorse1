@@ -1,5 +1,5 @@
 name: Update fuel observatory weekly
-# One-shot production trigger via merge; remove after successful deployment.
+# Temporary deployment trigger; remove after successful production regeneration.
 
 on:
   push:
@@ -7,8 +7,9 @@ on:
     paths:
       - '.github/workflows/update-weekly.yml'
   schedule:
-    # GitHub cron is UTC. Two slots allow an exact 07:00 Europe/Paris schedule year-round;
-    # the first step keeps only the slot matching the current CET/CEST offset.
+    # Temporary five-minute slot used only for the first production deployment.
+    - cron: '*/5 * * * *'
+    # Normal weekly slots (UTC), filtered below to 07:00 Europe/Paris.
     - cron: '0 5 * * 1'
     - cron: '0 6 * * 1'
   workflow_dispatch:
@@ -37,13 +38,14 @@ jobs:
           from datetime import datetime
           from zoneinfo import ZoneInfo
           out=os.environ['GITHUB_OUTPUT']
-          if os.environ.get('EVENT_NAME') in {'workflow_dispatch','push'}:
+          event=os.environ.get('EVENT_NAME')
+          schedule=os.environ.get('EVENT_SCHEDULE','')
+          if event in {'workflow_dispatch','push'} or schedule == '*/5 * * * *':
               run=True
           else:
               paris=datetime.now(ZoneInfo('Europe/Paris'))
               offset_hours=int(paris.utcoffset().total_seconds()//3600)
               expected_utc_hour=(7-offset_hours)%24
-              schedule=os.environ.get('EVENT_SCHEDULE','')
               try:
                   scheduled_hour=int(schedule.split()[1])
               except Exception:
