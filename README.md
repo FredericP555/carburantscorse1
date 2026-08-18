@@ -29,7 +29,37 @@ scripts/                            Génération, détection et contrôles
 - **Agrégations** : les séries hebdomadaires et mensuelles sont calculées à partir du journalier.
 - **Historique publié** : les valeurs déjà publiées jusqu'au 28 mai 2026 sont figées, y compris le traitement historique des **six relevés aberrants corses** documentés dans le projet A4C retrouvé. L'automatisation est ensuite **append-only** : elle ajoute de nouveaux jours sans réécrire rétroactivement les courbes publiques si le stock officiel est corrigé ultérieurement.
 
-Des contrôles automatiques bloquent la publication en cas de rupture structurelle, incohérence TTC/HT, couverture anormale du référentiel TotalEnergies ou variation journalière régionale manifestement anormale.
+Des contrôles automatiques bloquent la publication en cas de rupture structurelle, incohérence TTC/HT, couverture anormale du référentiel TotalEnergies, population de stations anormale ou variation journalière régionale manifestement anormale.
+
+## Audit hebdomadaire des stations corses
+
+Avant toute publication, `scripts/station_audit.py` reconstruit l'état de chaque **série station-carburant** corse à la date du dernier jour disponible. Une même station physique peut donc apparaître dans l'audit Gazole et dans l'audit SP95.
+
+Après exclusion en amont des stations `pop=A`, chaque série est classée dans une seule catégorie :
+
+- **retenue** : dernier prix valide âgé d'au plus 45 jours ;
+- **trop ancienne** : dernière déclaration âgée de plus de 45 jours ;
+- **dernier prix invalide** : dernière déclaration récente mais hors de la plage 1,10–3,00 €/L ; la station reste exclue jusqu'à une déclaration valide ultérieure ;
+- **sans état antérieur exploitable** : cas de sécurité prévu par le code, qui doit normalement rester à zéro.
+
+Les comptes doivent se réconcilier exactement : `connues = retenues + trop anciennes + invalides + sans état`. Les identifiants des séries exclues, la date de leur dernière déclaration et son ancienneté sont conservés dans `data.json > meta > station_audit` et apparaissent dans le résumé GitHub Actions.
+
+Premier audit vérifié au **17 août 2026** :
+
+- Gazole : **125** séries connues dans les stocks N-1/N, **123** ayant déclaré en 2026, **121 retenues**, **4 trop anciennes**, **0 dernier prix invalide** ;
+- SP95 : **125** séries connues, **123** ayant déclaré en 2026, **106 retenues**, **19 trop anciennes**, **0 dernier prix invalide**.
+
+Une série « trop ancienne » n'est pas qualifiée automatiquement de station fermée : elle est simplement exclue de la moyenne tant qu'aucune nouvelle déclaration récente n'est disponible.
+
+La publication est bloquée si :
+
+- moins de **80** séries Gazole ou **60** séries SP95 restent retenues ;
+- la population retenue chute de plus de **20 %** par rapport au dernier audit publié ;
+- plus de **5 %** des séries ont comme dernier état un prix invalide ;
+- le décompte ne se réconcilie pas ;
+- le nombre retenu ne correspond pas au calcul indépendant du détecteur de bouclier (`stations Total + stations non-Total`).
+
+Tant qu'aucun audit précédent n'est encore stocké dans `data.json`, la population vérifiée du 17 août 2026 (**121 Gazole / 106 SP95**) sert de référence de démarrage pour le garde-fou de baisse de 20 %.
 
 ## Référentiel TotalEnergies
 
@@ -96,12 +126,14 @@ Le workflow `update-weekly.yml` s'exécute chaque **lundi à 07:00 heure de Pari
 
 1. téléchargement du stock annuel officiel ;
 2. ajout des seuls jours nouveaux à `data.json` ;
-3. contrôles de cohérence et de couverture ;
-4. détection prospective du bouclier effectif ;
-5. recalcul des indicateurs éditoriaux selon le calendrier commun d'actions TotalEnergies ;
-6. production d'un résumé lisible dans GitHub Actions ;
-7. commit automatique de `data.json` si les données ont réellement avancé ;
-8. demande explicite de reconstruction de GitHub Pages.
+3. audit des séries station-carburant corses et application des garde-fous de population ;
+4. contrôles de cohérence des séries candidates ;
+5. détection prospective du bouclier effectif ;
+6. recalcul des indicateurs éditoriaux selon le calendrier commun d'actions TotalEnergies ;
+7. validation croisée des métadonnées et populations de stations ;
+8. production du résumé hebdomadaire par le même script que celui testé dans la PR ;
+9. commit automatique de `data.json` si les données ont réellement avancé ;
+10. demande explicite de reconstruction de GitHub Pages.
 
 S'il n'y a aucun nouveau jour officiel, l'exécution est un **no-op** : aucun commit inutile et aucune fausse date de mise à jour.
 
