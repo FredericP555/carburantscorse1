@@ -23,6 +23,9 @@ ORIGIN = core.ORIGIN
 MIN_RETAINED = {"Gazole": 80, "SP95": 60}
 MAX_RETAINED_DROP = 0.20
 MAX_INVALID_SHARE = 0.05
+# First verified audit, used only until data.json contains its own previous audit baseline.
+BOOTSTRAP_AS_OF = date(2026, 8, 17)
+BOOTSTRAP_RETAINED = {"Gazole": 121, "SP95": 106}
 
 
 def candidate_last_date(data: dict) -> date:
@@ -129,12 +132,17 @@ def build_audit(candidate: dict, year: int):
             "minimum_retained": MIN_RETAINED,
             "maximum_retained_drop_vs_previous_audit": MAX_RETAINED_DROP,
             "maximum_invalid_latest_share": MAX_INVALID_SHARE,
+            "bootstrap_reference": {
+                "as_of": str(BOOTSTRAP_AS_OF),
+                "retained": BOOTSTRAP_RETAINED,
+            },
         },
         "fuels": fuels,
     }
 
 
 def validate_audit(audit: dict, previous: dict | None):
+    as_of = date.fromisoformat(audit["as_of"])
     for fuel in ("Gazole", "SP95"):
         a = audit["fuels"][fuel]
         known = a["known_station_fuel_series"]
@@ -152,15 +160,26 @@ def validate_audit(audit: dict, previous: dict | None):
                 f"Too many latest invalid prices for {fuel}: {invalid}/{known} > {MAX_INVALID_SHARE:.0%}"
             )
 
+        # Prefer the last published audit. Before the first audited publication, use the
+        # verified 17 Aug 2026 population so the very first production run is also protected.
+        reference = None
+        label = None
         if previous:
             prev = previous.get("fuels", {}).get(fuel)
             if prev and prev.get("retained"):
-                old = int(prev["retained"])
-                drop = (old - retained) / old
-                if drop > MAX_RETAINED_DROP:
-                    raise RuntimeError(
-                        f"Sudden retained-station drop for {fuel}: {old} -> {retained} ({drop:.1%})"
-                    )
+                reference = int(prev["retained"])
+                label = f"previous audit {previous.get('as_of', '?')}"
+        if reference is None and as_of >= BOOTSTRAP_AS_OF:
+            reference = BOOTSTRAP_RETAINED[fuel]
+            label = f"bootstrap audit {BOOTSTRAP_AS_OF}"
+
+        if reference:
+            drop = (reference - retained) / reference
+            if drop > MAX_RETAINED_DROP:
+                raise RuntimeError(
+                    f"Sudden retained-station drop for {fuel}: {reference} -> {retained} "
+                    f"({drop:.1%}) vs {label}"
+                )
 
 
 def print_report(audit: dict):
