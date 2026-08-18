@@ -52,7 +52,7 @@ jobs:
         run: |
           "${{ steps.chrome.outputs.path }}" --headless --no-sandbox --disable-gpu --window-size=1280,900 --virtual-time-budget=8000 --dump-dom http://127.0.0.1:8000/ > /tmp/desktop.html
 
-      - name: Verify desktop dynamic content
+      - name: Verify wide desktop uses full period
         run: |
           source /tmp/expected.env
           grep -q "CLASSEMENT AU $LAST_UPPER" /tmp/desktop.html
@@ -60,13 +60,13 @@ jobs:
           grep -q "$GAP" /tmp/desktop.html
           ! grep -q "CLASSEMENT AU 28 MAI 2026" /tmp/desktop.html
           grep -E -q 'id="periodControl"[^>]*display: none' /tmp/desktop.html
-          echo "Desktop integration: OK"
+          echo "Wide desktop integration: OK"
 
       - name: Render mobile portrait dashboard
         run: |
           "${{ steps.chrome.outputs.path }}" --headless --no-sandbox --disable-gpu --window-size=390,844 --virtual-time-budget=8000 --dump-dom http://127.0.0.1:8000/ > /tmp/portrait.html
 
-      - name: Verify mobile portrait 12-month control
+      - name: Verify mobile portrait gets period control
         run: |
           grep -q 'id="periodSlider"' /tmp/portrait.html
           grep -q '12 derniers mois' /tmp/portrait.html
@@ -83,11 +83,32 @@ jobs:
           grep -q '12 derniers mois' /tmp/narrow-iframe.html
           echo "Narrow iframe integration: OK"
 
+      - name: Render WordPress-like 835px iframe
+        run: |
+          "${{ steps.chrome.outputs.path }}" --headless --no-sandbox --disable-gpu --window-size=835,650 --virtual-time-budget=8000 --dump-dom http://127.0.0.1:8000/ > /tmp/iframe-835.html
+
+      - name: Verify 835px iframe gets period control
+        run: |
+          grep -E -q 'id="periodControl"[^>]*display: flex' /tmp/iframe-835.html
+          grep -q '12 derniers mois' /tmp/iframe-835.html
+          echo "835px iframe integration: OK"
+
+      - name: Render classic 1000px embed with sidebar
+        run: |
+          "${{ steps.chrome.outputs.path }}" --headless --no-sandbox --disable-gpu --window-size=1000,700 --virtual-time-budget=8000 --dump-dom http://127.0.0.1:8000/ > /tmp/embed-1000.html
+
+      - name: Verify 1000px embed gets period control
+        run: |
+          grep -E -q 'id="periodControl"[^>]*display: flex' /tmp/embed-1000.html
+          grep -q '12 derniers mois' /tmp/embed-1000.html
+          echo "1000px embed integration: OK"
+
       - name: Render mobile landscape dashboard
         run: |
           "${{ steps.chrome.outputs.path }}" --headless --no-sandbox --disable-gpu --window-size=844,390 --virtual-time-budget=8000 --dump-dom http://127.0.0.1:8000/ > /tmp/landscape.html
 
-      - name: Verify wide landscape restores full-period mode
+      - name: Verify narrow landscape gets period control too
         run: |
-          grep -E -q 'id="periodControl"[^>]*display: none' /tmp/landscape.html
-          echo "Wide landscape integration: OK"
+          grep -E -q 'id="periodControl"[^>]*display: flex' /tmp/landscape.html
+          grep -q '12 derniers mois' /tmp/landscape.html
+          echo "Narrow landscape integration: OK"
