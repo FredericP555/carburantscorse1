@@ -2,6 +2,10 @@ name: Update fuel observatory weekly
 # Temporary deployment trigger; remove after successful production regeneration.
 
 on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/update-weekly.yml'
   push:
     branches: [main]
     paths:
@@ -40,7 +44,7 @@ jobs:
           out=os.environ['GITHUB_OUTPUT']
           event=os.environ.get('EVENT_NAME')
           schedule=os.environ.get('EVENT_SCHEDULE','')
-          if event in {'workflow_dispatch','push'} or schedule == '*/5 * * * *':
+          if event in {'workflow_dispatch','push','pull_request'} or schedule == '*/5 * * * *':
               run=True
           else:
               paris=datetime.now(ZoneInfo('Europe/Paris'))
