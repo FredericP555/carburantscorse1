@@ -60,6 +60,15 @@ for fuel in ('Gazole','SP95'):
     assert b.get('latest_non_total_p75') is not None, f'missing non-Total p75: {fuel}'
     assert 0 <= b.get('latest_near_share',0) <= 1
 
+    # Independent population reconciliation: station_audit classifies all latest Corsica
+    # station-fuel states, while bouclier_detector independently splits the retained population
+    # into TotalEnergies and non-Total. They must describe exactly the same retained stations.
+    audited_retained=station_audit['fuels'][fuel]['retained']
+    assert nt+nn==audited_retained, (
+        f'population mismatch for {fuel}: audit retained={audited_retained}, '
+        f'Total+non-Total={nt}+{nn}={nt+nn}'
+    )
+
     if b['current_active']:
         assert b['current_active_since']
         assert b['current_cap'] is not None
