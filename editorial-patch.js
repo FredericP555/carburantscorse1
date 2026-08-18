@@ -1,7 +1,9 @@
-// Ajustements éditoriaux de présentation — chargés après automation.js.
+// Ajustements éditoriaux et de lecture — chargés après automation.js.
 // 1) historique disponible explicite dans le sous-titre ;
 // 2) texte éditorial coulé et équilibré sur deux colonnes ;
-// 3) statut du bouclier distinguant la période actuelle des épisodes antérieurs de 2026.
+// 3) statut du bouclier distinguant la période actuelle des épisodes antérieurs de 2026 ;
+// 4) écart HT journalier apparié strictement par date, sans lissage caché ;
+// 5) repères temporels plus denses quand une fenêtre courte est affichée.
 
 function editorialEnsureStyles(){
   if(document.getElementById('editorial-flow-style')) return;
@@ -56,19 +58,21 @@ buildAnalyse=function(){
   const e=DATA?.meta?.editorial?.[carbu];
   const b=DATA?.meta?.bouclier?.[carbu];
   const c=carbu.toLowerCase();
-  const block=(titre,texte,note)=>`
+  const source='Source : moyenne journalière HT, données data.gouv.fr · carburantscorse.fr';
+  const block=(titre,texte,note='')=>`
     <div class="analyse-titre">${titre}</div>
     <p class="analyse-texte">${texte}</p>
-    <p class="analyse-note">${note}</p>`;
+    ${note?`<p class="analyse-note">${note}</p>`:''}`;
 
+  // Pas de source ici : elle est volontairement placée tout à la fin de la partie 2,
+  // afin que le titre « 2 » remonte dans la colonne de gauche et que la source ferme le bloc.
   const historique=block('1 — UN ÉCART QUI SE CREUSE, HORS TOUTE ACTION TOTALENERGIES',
-    `Sur les jours hors toute action TotalEnergies, l'écart moyen HT du ${c} entre la Corse et le continent passe de <strong>+${d.tendance.y2022} c€/L en 2022</strong> à <strong>+${d.tendance.y2023} c€/L en 2023</strong>, <strong>+${d.tendance.y2024} c€/L en 2024</strong> puis <strong>+${d.tendance.y2025} c€/L en 2025</strong> — soit <strong>${d.tendance.delta} c€/L de plus en trois ans</strong>. Cette progression ne peut pas s'expliquer par un seul surcoût d'insularité supposé stable : la Corse ne devient pas davantage une île d'une année sur l'autre.`,
-    'Source : moyenne journalière HT, données data.gouv.fr · carburantscorse.fr');
+    `Sur les jours hors toute action TotalEnergies, l'écart moyen HT du ${c} entre la Corse et le continent passe de <strong>+${d.tendance.y2022} c€/L en 2022</strong> à <strong>+${d.tendance.y2023} c€/L en 2023</strong>, <strong>+${d.tendance.y2024} c€/L en 2024</strong> puis <strong>+${d.tendance.y2025} c€/L en 2025</strong> — soit <strong>${d.tendance.delta} c€/L de plus en trois ans</strong>. Cette progression ne peut pas s'expliquer par un seul surcoût d'insularité supposé stable : la Corse ne devient pas davantage une île d'une année sur l'autre.`);
 
   if(!e){
     const courant=block('2 — EFFETS DES ACTIONS TOTALENERGIES',
       `Les remises carburant (sept.–déc. 2022, −20 c/L puis −10 c/L) et les périodes d'activation du bouclier tarifaire ont atténué l'écart. En 2022, grâce aux remises, l'écart annuel moyen ${c} est tombé à <strong>+${d.effet.avec2022} c€/L</strong> au lieu de +${d.effet.sans2022} c€/L hors toute action TotalEnergies — un gain de <strong>${d.effet.gain2022} c€/L</strong>.`,
-      'Données courantes non encore disponibles.');
+      `Données courantes non encore disponibles.<br><br>${source}`);
     el.innerHTML=`<div class="analyse-flow">${historique}${courant}</div>`;
     return;
   }
@@ -91,7 +95,7 @@ buildAnalyse=function(){
 
   const courant=block('2 — EFFETS DES ACTIONS TOTALENERGIES',
     `Les remises carburant (sept.–déc. 2022, −20 c/L puis −10 c/L) ont nettement réduit l'écart : en 2022, l'écart annuel moyen ${c} est tombé à <strong>+${d.effet.avec2022} c€/L</strong> au lieu de +${d.effet.sans2022} c€/L hors toute action TotalEnergies. En ${e.year}, jusqu'au ${through}, l'écart moyen observé s'établit à <strong>${autoNumberFr(e.observed_ytd_gap,1,true)} c€/L</strong>. ${splitText} ${currentStatus}`,
-    '« Hors toute action TotalEnergies » : moyenne des écarts journaliers HT des jours où aucune intervention Total n’est active sur aucun des deux carburants. Le bouclier prospectif reste détecté selon la règle économique documentée ; les anciennes zones sont figées.');
+    `« Hors toute action TotalEnergies » : moyenne des écarts journaliers HT des jours où aucune intervention Total n’est active sur aucun des deux carburants. Le bouclier prospectif reste détecté selon la règle économique documentée ; les anciennes zones sont figées.<br><br>${source}`);
 
   el.innerHTML=`<div class="analyse-flow">${historique}${courant}</div>`;
 };
@@ -117,4 +121,113 @@ updateBouclierInfo=function(){
       if(txt&&txt.nodeType===Node.TEXT_NODE) txt.textContent=' Promotions Total 2,09 €/L — épisodes de mai 2026';
     }
   }
+};
+
+// ── Écart HT : appariement strict par date/période, sans moyenne mobile cachée ──
+// Le graphe supérieur affiche des prix TTC ; le graphe inférieur neutralise les TVA
+// (Corse 13 %, continent 20 %). Les deux formes ne sont donc pas censées être identiques.
+// En revanche, chaque point d'écart ci-dessous correspond désormais exactement à la même
+// date/période dans les deux séries. Une date absente produit null au lieu de décaler la série.
+function editorialBuildExactGapDs(){
+  const ck=carbu==='Gazole'?'G':'S';
+  const corsePts=getSeries(ck,'corse',resolution);
+  const labels=resolution==='m'
+    ? corsePts.map(p=>p[0])
+    : corsePts.map(p=>offsetToDate(p[0]));
+
+  return {labels,datasets:['moy_regions',...REGIONS].map(key=>{
+    const regionByPeriod=new Map(getSeries(ck,key,resolution).map(p=>[p[0],p[2]]));
+    return {
+      label:LABELS[key]||key,
+      _key:key,
+      data:corsePts.map(p=>{
+        const vc=p[2], vr=regionByPeriod.get(p[0]);
+        return (vc!=null&&vr!=null)?Math.round((vc-vr)*10000)/100:null;
+      }),
+      borderColor:COLORS[key]||'#888',
+      backgroundColor:(COLORS[key]||'#888')+'18',
+      borderWidth:key==='moy_regions'?2:1.2,
+      pointRadius:0,
+      tension:0.3,
+      spanGaps:true,
+    };
+  })};
+}
+
+buildEcartDs=function(){
+  const result=editorialBuildExactGapDs();
+  return (typeof autoSliceWindow==='function')?autoSliceWindow(result):result;
+};
+
+// ── Axe temporel ──────────────────────────────────────────────────────────────
+// Sur 12 mois, afficher environ un repère tous les deux mois au lieu du seul 1er janvier.
+function editorialTimeTick(val){
+  const lbl=this.getLabelForValue(val);
+  if(!lbl) return '';
+  const narrow=(typeof autoNarrow==='boolean')?autoNarrow:false;
+  const monthsWindow=(typeof autoMonthsWindow==='number')?autoMonthsWindow:999;
+
+  if(resolution==='d'){
+    const [y,m,d]=lbl.split('-').map(Number);
+    if(narrow&&monthsWindow<=18){
+      if(d!==1 || m%2===0) return '';
+    }else if(narrow&&monthsWindow<=30){
+      if(d!==1 || ![1,4,7,10].includes(m)) return '';
+    }else if(m!==1 || d!==1){
+      return '';
+    }
+    return MONTHS[m-1]+' '+String(y).slice(2);
+  }
+
+  if(resolution==='w'){
+    const [y,m,d]=lbl.split('-').map(Number);
+    if(narrow&&monthsWindow<=18){
+      if(d>7 || m%2===0) return '';
+    }else if(narrow&&monthsWindow<=30){
+      if(d>7 || ![1,4,7,10].includes(m)) return '';
+    }else if(m!==1 || d>7){
+      return '';
+    }
+    return MONTHS[m-1]+' '+String(y).slice(2);
+  }
+
+  if(resolution==='m'){
+    const [y,m]=lbl.split('-').map(Number);
+    if(narrow&&monthsWindow<=18){
+      if(m%2===0) return '';
+    }else if(!narrow){
+      if(![1,7].includes(m)) return '';
+    }
+    return MONTHS[m-1]+' '+String(y).slice(2);
+  }
+
+  return formatLabel(lbl);
+}
+
+function editorialApplyChartReadability(){
+  [chartPrix,chartEcart].forEach(chart=>{
+    const ticks=chart?.options?.scales?.x?.ticks;
+    if(!ticks) return;
+    ticks.autoSkip=false;
+    ticks.callback=editorialTimeTick;
+  });
+  const gapLabel=document.getElementById('chartEcartLabel');
+  if(gapLabel){
+    const period=resolution==='d'?'JOURNALIER':resolution==='w'?'HEBDOMADAIRE':'MENSUEL';
+    gapLabel.textContent=`${carbu.toUpperCase()} HT — ÉCART ${period} CORSE VS RÉGIONS (C€/L)`;
+  }
+  if(chartPrix) chartPrix.update('none');
+  if(chartEcart) chartEcart.update('none');
+}
+
+const _editorialChartBaseInitCharts=initCharts;
+initCharts=function(){
+  _editorialChartBaseInitCharts();
+  editorialApplyChartReadability();
+};
+
+const _editorialChartBaseRefresh=refresh;
+refresh=function(){
+  _editorialChartBaseRefresh();
+  editorialApplyChartReadability();
 };
