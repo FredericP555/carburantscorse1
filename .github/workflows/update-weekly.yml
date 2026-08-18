@@ -89,8 +89,13 @@ jobs:
         if: steps.clock.outputs.run == 'true'
         id: changed
         shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
         run: |
-          if cmp -s data.json data-candidate.json; then
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            echo "Deployment run: force final audit and metadata regeneration."
+          elif cmp -s data.json data-candidate.json; then
             echo "changed=false" >> "$GITHUB_OUTPUT"
             echo "No new official day: clean no-op."
           else
