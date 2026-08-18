@@ -1,5 +1,5 @@
 // Couche d'automatisation A4C — chargée après app.js.
-// Elle conserve le design historique et ajoute : dates dynamiques, fenêtre mobile portrait,
+// Elle conserve le design historique et ajoute : dates dynamiques, fenêtre étroite,
 // zones de bouclier prospectives et analyse courante reproductible.
 
 function autoDateFr(str, withYear=true) {
@@ -22,12 +22,14 @@ function autoNumberFr(v, digits=1, sign=false) {
   return `${sign&&n>=0?'+':''}${n.toFixed(digits).replace('.',',')}`;
 }
 
-// ── Fenêtre temporelle : reprise du prototype Claude, corrigée pour être réellement
-//    limitée au mobile portrait. Desktop/paysage = histoire complète. ────────────────
+// ── Fenêtre temporelle ───────────────────────────────────────────────────────
+// Le critère porte sur la largeur réellement disponible pour le graphe, et non sur
+// l'orientation de window. C'est indispensable quand le dashboard est intégré dans un iframe.
 let autoMobileMonthsWindow=12;
 let autoMonthsWindow=12;
 let autoMonthsMax=12;
-let autoPortrait=false;
+let autoNarrow=false;
+const AUTO_NARROW_WIDTH=700;
 
 function autoEnsurePeriodControl(){
   if(document.getElementById('periodControl')) return;
@@ -86,13 +88,19 @@ function autoUpdatePeriodLabel(){
   lbl.textContent=parts.join(' ');
 }
 
+function autoAvailableChartWidth(){
+  const host=document.querySelector('.chart-wrap') || document.querySelector('.charts');
+  const width=host?.getBoundingClientRect?.().width;
+  return width&&Number.isFinite(width)?width:window.innerWidth;
+}
+
 function autoSyncPeriodMode(){
   autoMonthsMax=autoComputeMonthsMax();
-  autoPortrait=window.innerWidth<700 && window.innerHeight>window.innerWidth;
+  autoNarrow=autoAvailableChartWidth()<AUTO_NARROW_WIDTH;
   const ctrl=document.getElementById('periodControl');
   const slider=document.getElementById('periodSlider');
-  if(ctrl) ctrl.style.display=autoPortrait?'flex':'none';
-  if(autoPortrait){
+  if(ctrl) ctrl.style.display=autoNarrow?'flex':'none';
+  if(autoNarrow){
     autoMobileMonthsWindow=Math.max(12,Math.min(autoMobileMonthsWindow,autoMonthsMax));
     autoMonthsWindow=autoMobileMonthsWindow;
   }else{
@@ -103,7 +111,7 @@ function autoSyncPeriodMode(){
 }
 
 function autoWindowStartIndex(labels){
-  if(!autoPortrait || autoMonthsWindow>=autoMonthsMax || !labels.length) return 0;
+  if(!autoNarrow || autoMonthsWindow>=autoMonthsMax || !labels.length) return 0;
   const lastLbl=labels[labels.length-1];
   const lastDateStr=resolution==='m'?lastLbl+'-01':lastLbl;
   const cutoff=new Date(lastDateStr);
@@ -174,9 +182,9 @@ let _autoResizeTimer;
 function autoViewportChanged(){
   clearTimeout(_autoResizeTimer);
   _autoResizeTimer=setTimeout(()=>{
-    const before=autoPortrait;
+    const before=autoNarrow;
     autoSyncPeriodMode();
-    if((before!==autoPortrait) && typeof chartPrix!=='undefined'&&chartPrix) refresh();
+    if((before!==autoNarrow) && typeof chartPrix!=='undefined'&&chartPrix) refresh();
   },120);
 }
 window.addEventListener('resize',autoViewportChanged);
@@ -198,7 +206,7 @@ buildAnalyse=function(){
     <p class="analyse-note">${note}</p></div>`;
 
   const historique=col('1 — UN ÉCART QUI SE CREUSE, HORS TOUTE ACTION TOTALENERGIES',
-    `Sans aucune intervention de TotalEnergies, l'écart de prix ${c} entre la Corse et le continent s'aggrave chaque année : <strong>+${d.tendance.y2022} c€/L HT en 2022</strong>, <strong>+${d.tendance.y2023} c€/L en 2023</strong>, <strong>+${d.tendance.y2024} c€/L en 2024</strong>, <strong>+${d.tendance.y2025} c€/L en 2025</strong> — soit <strong>${d.tendance.delta} c€/L de plus en trois ans</strong>. Cette progression exclut toute explication par les seuls coûts d’insularité : ceux-ci sont stables d’une année sur l’autre. La Corse ne devient pas plus île — c’est donc autre chose qui fait grimper l'écart.`,
+    `Sur les jours hors toute action TotalEnergies, l'écart moyen HT du ${c} entre la Corse et le continent passe de <strong>+${d.tendance.y2022} c€/L en 2022</strong> à <strong>+${d.tendance.y2023} c€/L en 2023</strong>, <strong>+${d.tendance.y2024} c€/L en 2024</strong> puis <strong>+${d.tendance.y2025} c€/L en 2025</strong> — soit <strong>${d.tendance.delta} c€/L de plus en trois ans</strong>. Cette progression ne peut pas s'expliquer par un seul surcoût d'insularité supposé stable : la Corse ne devient pas davantage une île d'une année sur l'autre.`,
     'Source : moyenne journalière HT, données data.gouv.fr · carburantscorse.fr');
 
   if(!e) {
