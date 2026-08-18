@@ -29,7 +29,7 @@ let autoMobileMonthsWindow=12;
 let autoMonthsWindow=12;
 let autoMonthsMax=12;
 let autoNarrow=false;
-const AUTO_NARROW_WIDTH=700;
+const AUTO_NARROW_WIDTH=950;
 
 function autoEnsurePeriodControl(){
   if(document.getElementById('periodControl')) return;
