@@ -1,5 +1,5 @@
 {
-  "source_note": "Référentiel d'enseignes constitué lors des travaux A4C sur les stations corses. Les données officielles prix-carburants ne fournissent pas l'enseigne; seuls les identifiants effectivement présents dans le flux du jour sont utilisés.",
+  "source_note": "Référentiel d'enseignes issu des travaux A4C sauvegardés le 14 juin 2026 dans le projet je-voudrais-te-faire-travailler-sur. Le fichier officiel prix-carburants ne fournit pas l'enseigne. Les 47 stations ci-dessous sont les stations TotalEnergies actuelles retrouvées dans le référentiel HTML; deux anciens identifiants de Folelli sont conservés comme alias historiques.",
   "stations": {
     "20000006": "RELAIS CECCALDI 24/7",
     "20000007": "SARL FABIANI STATION TOTAL",
@@ -48,5 +48,9 @@
     "20600003": "ETS MARCEL FERRARI",
     "20600004": "SARL CIAVALDINI STRABONI",
     "20600006": "SAS BRUNINI ET FILS"
+  },
+  "historical_aliases": {
+    "20213003": "20213007",
+    "20213006": "20213007"
   }
 }
