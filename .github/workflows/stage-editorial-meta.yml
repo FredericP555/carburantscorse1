@@ -1,0 +1,44 @@
+name: Stage recovered editorial metadata
+
+on:
+  push:
+    branches: [automation-v1]
+    paths:
+      - 'stage-editorial-meta.trigger'
+
+permissions:
+  contents: write
+
+jobs:
+  stage:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: automation-v1
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: Build candidate without rewriting history
+        run: python scripts/update_data_append.py --input data.json --output data-candidate.json
+      - name: Validate candidate
+        run: python scripts/validate_candidate.py
+      - name: Add recovered editorial metadata
+        run: python scripts/enrich_data_meta.py --input data-candidate.json
+      - name: Validate metadata
+        run: python scripts/validate_meta.py
+      - name: Commit staged data
+        run: |
+          mv data-candidate.json data.json
+          if git diff --quiet -- data.json; then
+            echo "data.json already current"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data.json
+          git commit -m "Stage recovered Total-action editorial metadata"
+          git push origin automation-v1
