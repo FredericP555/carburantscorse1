@@ -1,4 +1,5 @@
 name: Update fuel observatory weekly
+# One-shot production trigger via merge; remove after successful deployment.
 
 on:
   push:
