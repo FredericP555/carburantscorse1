@@ -14,25 +14,83 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
+
       - name: Check automation JavaScript syntax
         run: node --check automation.js
+
+      - name: Build expected dynamic labels from data.json
+        run: |
+          python - <<'PY' > /tmp/expected.env
+          import json
+          d=json.load(open('data.json',encoding='utf-8'))
+          last=d['meta']['last_date']
+          y,m,day=map(int,last.split('-'))
+          months=['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre']
+          month_caps=['Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre']
+          print(f"LAST_UPPER='{day} {months[m-1]} {y}'.upper()")
+          print(f"MONTH_YEAR='{month_caps[m-1]} {y}'")
+          gap=d['meta']['editorial']['Gazole']['observed_ytd_gap']
+          print(f"GAP='{gap:+.1f}'.replace('.',',')")
+          PY
+          # The Python above writes Python-like expressions for unicode-safe values; rewrite as shell vars.
+          python - <<'PY' > /tmp/expected.env
+          import json
+          d=json.load(open('data.json',encoding='utf-8'))
+          y,m,day=map(int,d['meta']['last_date'].split('-'))
+          months=['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre']
+          month_caps=['Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre']
+          print('LAST_UPPER="'+f'{day} {months[m-1]} {y}'.upper()+'"')
+          print('MONTH_YEAR="'+f'{month_caps[m-1]} {y}'+'"')
+          gap=d['meta']['editorial']['Gazole']['observed_ytd_gap']
+          print('GAP="'+f'{gap:+.1f}'.replace('.',',')+'"')
+          PY
+          cat /tmp/expected.env
+
       - name: Start local static server
         run: |
           python3 -m http.server 8000 > /tmp/a4c-http.log 2>&1 &
           sleep 2
-      - name: Render dashboard with headless Chrome
+
+      - name: Find Chrome
+        id: chrome
         run: |
           CHROME=$(command -v google-chrome || command -v chromium || command -v chromium-browser)
           if [ -z "$CHROME" ]; then
             echo "Chrome/Chromium not available on runner"
             exit 1
           fi
-          "$CHROME" --headless --no-sandbox --disable-gpu --virtual-time-budget=8000 --dump-dom http://127.0.0.1:8000/ > /tmp/rendered.html
-      - name: Verify dynamic date and editorial content
+          echo "path=$CHROME" >> "$GITHUB_OUTPUT"
+
+      - name: Render desktop dashboard
         run: |
-          grep -q "CLASSEMENT AU 16 AOÛT 2026" /tmp/rendered.html
-          grep -q "Janvier 2022 – Août 2026" /tmp/rendered.html
-          grep -q "14,6" /tmp/rendered.html
-          grep -q "23 juillet 2026" /tmp/rendered.html
-          grep -q "55" /tmp/rendered.html
-          echo "Browser integration test: OK"
+          "${{ steps.chrome.outputs.path }}" --headless --no-sandbox --disable-gpu --window-size=1280,900 --virtual-time-budget=8000 --dump-dom http://127.0.0.1:8000/ > /tmp/desktop.html
+
+      - name: Verify desktop dynamic content
+        run: |
+          source /tmp/expected.env
+          grep -q "CLASSEMENT AU $LAST_UPPER" /tmp/desktop.html
+          grep -q "Janvier 2022 – $MONTH_YEAR" /tmp/desktop.html
+          grep -q "$GAP" /tmp/desktop.html
+          ! grep -q "CLASSEMENT AU 28 MAI 2026" /tmp/desktop.html
+          grep -E -q 'id="periodControl"[^>]*display: none' /tmp/desktop.html
+          echo "Desktop integration: OK"
+
+      - name: Render mobile portrait dashboard
+        run: |
+          "${{ steps.chrome.outputs.path }}" --headless --no-sandbox --disable-gpu --window-size=390,844 --virtual-time-budget=8000 --dump-dom http://127.0.0.1:8000/ > /tmp/portrait.html
+
+      - name: Verify mobile portrait 12-month control
+        run: |
+          grep -q 'id="periodSlider"' /tmp/portrait.html
+          grep -q '12 derniers mois' /tmp/portrait.html
+          grep -E -q 'id="periodControl"[^>]*display: flex' /tmp/portrait.html
+          echo "Mobile portrait integration: OK"
+
+      - name: Render mobile landscape dashboard
+        run: |
+          "${{ steps.chrome.outputs.path }}" --headless --no-sandbox --disable-gpu --window-size=844,390 --virtual-time-budget=8000 --dump-dom http://127.0.0.1:8000/ > /tmp/landscape.html
+
+      - name: Verify landscape restores full-period mode
+        run: |
+          grep -E -q 'id="periodControl"[^>]*display: none' /tmp/landscape.html
+          echo "Mobile landscape integration: OK"
