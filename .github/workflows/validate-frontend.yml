@@ -24,8 +24,12 @@ jobs:
         run: |
           python - <<'PY'
           import json
+          from datetime import date,timedelta
           d=json.load(open('data.json',encoding='utf-8'))
+          origin=date(2022,1,1)
           regions=['moy_regions','Auvergne-Rhône-Alpes','Bourgogne-Franche-Comté','Bretagne','Centre-Val de Loire','Grand Est','Hauts-de-France','Île-de-France','Normandie','Nouvelle-Aquitaine','Occitanie','PACA','Pays de la Loire']
+          def day(offset):
+              return (origin+timedelta(days=int(offset))).isoformat()
           for fuel in ('G','S'):
               base=d[fuel]['corse']['d']
               base_keys=[p[0] for p in base]
@@ -34,8 +38,10 @@ jobs:
                   pts=d[fuel][key]['d']
                   keys=[p[0] for p in pts]
                   assert len(keys)==len(set(keys)), f'{fuel} {key} duplicate dates'
-                  common=len(set(base_keys)&set(keys))
-                  print(f'{fuel} {key}: corse={len(base_keys)} region={len(keys)} common_dates={common}')
+                  missing=sorted(set(base_keys)-set(keys))
+                  print(f'{fuel} {key}: corse={len(base_keys)} region={len(keys)} common_dates={len(set(base_keys)&set(keys))}')
+                  if missing:
+                      print('  missing vs Corse:',', '.join(day(x) for x in missing[:10]))
               reg={p[0]:p for p in d[fuel]['moy_regions']['d']}
               recent=base[-366:]
               values=[]
@@ -47,8 +53,8 @@ jobs:
               if values:
                   max_ttc=max(values,key=lambda x:x[1])
                   max_ht=max(values,key=lambda x:x[2])
-                  print(f'{fuel} last-12m max TTC gap: offset={max_ttc[0]} gap={max_ttc[1]:.2f} c/L')
-                  print(f'{fuel} last-12m max HT gap : offset={max_ht[0]} gap={max_ht[2]:.2f} c/L')
+                  print(f'{fuel} last-12m max TTC gap: {day(max_ttc[0])} = {max_ttc[1]:.2f} c/L')
+                  print(f'{fuel} last-12m max HT gap : {day(max_ht[0])} = {max_ht[2]:.2f} c/L')
           PY
 
       - name: Build expected dynamic labels from data.json
@@ -94,10 +100,15 @@ jobs:
           grep -E -q 'id="periodControl"[^>]*display: none' /tmp/desktop.html
           grep -q 'class="analyse-flow"' /tmp/desktop.html
           grep -q 'column-count:2' /tmp/desktop.html
-          grep -q '2 — EFFETS DES ACTIONS TOTALENERGIES' /tmp/desktop.html
           grep -q '20 mars–6 avril 2026' /tmp/desktop.html
           grep -q '8 avril–27 mai 2026' /tmp/desktop.html
-          grep -q 'Source : moyenne journalière HT' /tmp/desktop.html
+          python - <<'PY'
+          s=open('/tmp/desktop.html',encoding='utf-8').read()
+          assert '2 — EFFETS DES ACTIONS TOTALENERGIES' in s
+          assert 'moyenne journalière HT' in s
+          assert s.index('2 — EFFETS DES ACTIONS TOTALENERGIES') < s.index('moyenne journalière HT')
+          print('Editorial source follows section 2: OK')
+          PY
           echo "Wide desktop integration and editorial flow: OK"
 
       - name: Render mobile portrait dashboard
