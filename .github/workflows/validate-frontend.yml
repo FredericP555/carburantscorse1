@@ -23,19 +23,6 @@ jobs:
           python - <<'PY' > /tmp/expected.env
           import json
           d=json.load(open('data.json',encoding='utf-8'))
-          last=d['meta']['last_date']
-          y,m,day=map(int,last.split('-'))
-          months=['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre']
-          month_caps=['Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre']
-          print(f"LAST_UPPER='{day} {months[m-1]} {y}'.upper()")
-          print(f"MONTH_YEAR='{month_caps[m-1]} {y}'")
-          gap=d['meta']['editorial']['Gazole']['observed_ytd_gap']
-          print(f"GAP='{gap:+.1f}'.replace('.',',')")
-          PY
-          # The Python above writes Python-like expressions for unicode-safe values; rewrite as shell vars.
-          python - <<'PY' > /tmp/expected.env
-          import json
-          d=json.load(open('data.json',encoding='utf-8'))
           y,m,day=map(int,d['meta']['last_date'].split('-'))
           months=['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre']
           month_caps=['Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre']
@@ -86,11 +73,21 @@ jobs:
           grep -E -q 'id="periodControl"[^>]*display: flex' /tmp/portrait.html
           echo "Mobile portrait integration: OK"
 
+      - name: Render narrow iframe-like dashboard
+        run: |
+          "${{ steps.chrome.outputs.path }}" --headless --no-sandbox --disable-gpu --window-size=600,500 --virtual-time-budget=8000 --dump-dom http://127.0.0.1:8000/ > /tmp/narrow-iframe.html
+
+      - name: Verify narrow iframe gets period control
+        run: |
+          grep -E -q 'id="periodControl"[^>]*display: flex' /tmp/narrow-iframe.html
+          grep -q '12 derniers mois' /tmp/narrow-iframe.html
+          echo "Narrow iframe integration: OK"
+
       - name: Render mobile landscape dashboard
         run: |
           "${{ steps.chrome.outputs.path }}" --headless --no-sandbox --disable-gpu --window-size=844,390 --virtual-time-budget=8000 --dump-dom http://127.0.0.1:8000/ > /tmp/landscape.html
 
-      - name: Verify landscape restores full-period mode
+      - name: Verify wide landscape restores full-period mode
         run: |
           grep -E -q 'id="periodControl"[^>]*display: none' /tmp/landscape.html
-          echo "Mobile landscape integration: OK"
+          echo "Wide landscape integration: OK"
