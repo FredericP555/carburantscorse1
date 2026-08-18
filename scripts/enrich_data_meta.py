@@ -102,6 +102,7 @@ def main():
     args=ap.parse_args()
     path=Path(args.input); outpath=Path(args.output or args.input)
     data=json.loads(path.read_text(encoding='utf-8'))
+    existing_station_audit=(data.get('meta') or {}).get('station_audit')
 
     last_off=max(p[0] for p in data['G']['corse']['d'])
     last_date=ORIGIN+timedelta(days=last_off)
@@ -120,6 +121,9 @@ def main():
             'SP95':editorial_for(data,'S','SP95',bmeta['SP95'],year,action_ranges),
         },
     }
+    if existing_station_audit is not None:
+        meta['station_audit']=existing_station_audit
+
     data['meta']=meta
     outpath.write_text(json.dumps(data,ensure_ascii=False,separators=(',',':')),encoding='utf-8')
     print(json.dumps(meta,ensure_ascii=False,indent=2))
