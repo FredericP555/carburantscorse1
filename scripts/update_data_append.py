@@ -19,6 +19,8 @@ from collections import defaultdict
 from datetime import date, timedelta
 from pathlib import Path
 
+import pandas as pd
+
 import update_data_v2 as core
 
 ORIGIN = core.ORIGIN
@@ -84,6 +86,37 @@ def validate_shape(data: dict):
     return next(iter(last_offsets))
 
 
+def generation_years(old_cutoff: int, target_year: int) -> list[int]:
+    """Return every annual slice needed to bridge the published cutoff to target_year.
+
+    This is deliberately based on the first missing day, not just on the current calendar year.
+    Example: if the dashboard stops on 2026-12-27 and the run occurs in January 2027, both
+    2026 and 2027 must be generated so 28–31 December are not skipped.
+    """
+    first_needed = ORIGIN + timedelta(days=old_cutoff + 1)
+    if target_year < first_needed.year:
+        raise RuntimeError(
+            f"Target year {target_year} precedes first missing day {first_needed}"
+        )
+    return list(range(first_needed.year, target_year + 1))
+
+
+def build_generated_payload(old: dict, target_year: int):
+    old_cutoff = validate_shape(old)
+    years = generation_years(old_cutoff, target_year)
+    frames = [core.build_daily(y) for y in years]
+    frames = [frame for frame in frames if not frame.empty]
+    if not frames:
+        raise RuntimeError(f"No generated rows for required years {years}")
+
+    combined = pd.concat(frames, ignore_index=True)
+    combined = (
+        combined.sort_values(["fuel", "region", "date"])
+        .drop_duplicates(["fuel", "region", "date"], keep="last")
+    )
+    return core.payload(combined), years
+
+
 def append_data(old: dict, generated: dict):
     old_cutoff = validate_shape(old)
     cutoff_date = ORIGIN + timedelta(days=old_cutoff)
@@ -107,6 +140,7 @@ def append_data(old: dict, generated: dict):
     first_new = old_cutoff + 1
     first_week = monday_offset(first_new)
     first_month = month_key(first_new)
+    expected_new_offsets = list(range(first_new, generated_cutoff + 1))
 
     out = json.loads(json.dumps(old))
     appended_counts = []
@@ -118,6 +152,18 @@ def append_data(old: dict, generated: dict):
             new_daily = [p for p in generated_daily if p[0] > old_cutoff]
             if not new_daily:
                 raise RuntimeError(f"No new daily data found for {fuel}/{name} after {cutoff_date}")
+
+            actual_new_offsets = [p[0] for p in new_daily]
+            if actual_new_offsets != expected_new_offsets:
+                expected_set = set(expected_new_offsets)
+                actual_set = set(actual_new_offsets)
+                missing = sorted(expected_set - actual_set)
+                extra = sorted(actual_set - expected_set)
+                fmt = lambda xs: [str(ORIGIN + timedelta(days=x)) for x in xs[:8]]
+                raise RuntimeError(
+                    f"Non-contiguous generated days for {fuel}/{name}: "
+                    f"missing={fmt(missing)} extra={fmt(extra)}"
+                )
 
             candidate_daily = old_daily + new_daily
             offs = [p[0] for p in candidate_daily]
@@ -149,7 +195,7 @@ def append_data(old: dict, generated: dict):
     end_date = ORIGIN + timedelta(days=end_off)
 
     print(f"Published history frozen through {cutoff_date}")
-    print(f"Appended {end_off-old_cutoff} new calendar days: {cutoff_date + timedelta(days=1)} -> {end_date}")
+    print(f"Appended {len(expected_new_offsets)} new calendar days: {cutoff_date + timedelta(days=1)} -> {end_date}")
     print(f"Rebuilt aggregates from week {ORIGIN + timedelta(days=first_week)} and month {first_month}")
     return out, old_cutoff, end_off
 
@@ -174,7 +220,8 @@ def main():
     args = ap.parse_args()
 
     old = json.loads(Path(args.input).read_text(encoding="utf-8"))
-    generated = core.payload(core.build_daily(args.year))
+    generated, years = build_generated_payload(old, args.year)
+    print(f"Generating annual slices needed for continuity: {', '.join(map(str, years))}")
     candidate, old_cutoff, end_off = append_data(old, generated)
     verify_immutability(old, candidate, old_cutoff)
 
