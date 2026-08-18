@@ -1,0 +1,115 @@
+name: Temporary UFIP download audit
+
+on:
+  push:
+    branches: [ufip-audit-temp]
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Selenium
+        run: python -m pip install --quiet selenium
+      - name: Probe UFIP custom download
+        run: |
+          cat > /tmp/probe_ufip.py <<'PY'
+          import json, os, time
+          from pathlib import Path
+          from selenium import webdriver
+          from selenium.webdriver.common.by import By
+          from selenium.webdriver.chrome.options import Options
+          from selenium.webdriver.support.ui import WebDriverWait
+
+          outdir=Path('/tmp/ufip-downloads'); outdir.mkdir(exist_ok=True)
+          opts=Options()
+          opts.add_argument('--headless=new')
+          opts.add_argument('--no-sandbox')
+          opts.add_argument('--disable-dev-shm-usage')
+          opts.add_argument('--window-size=1600,1200')
+          opts.set_capability('goog:loggingPrefs', {'performance':'ALL'})
+          opts.add_experimental_option('prefs', {
+              'download.default_directory': str(outdir),
+              'download.prompt_for_download': False,
+              'download.directory_upgrade': True,
+              'safebrowsing.enabled': True,
+          })
+          drv=webdriver.Chrome(options=opts)
+          drv.execute_cdp_cmd('Page.setDownloadBehavior', {'behavior':'allow','downloadPath':str(outdir)})
+          urls=['https://valeurs.ufip.fr/datas/custom','https://www.energiesetmobilites.fr/valeurs/datas/custom']
+          try:
+            loaded=False
+            for url in urls:
+              print('\n=== OPEN',url,'===')
+              drv.get(url)
+              time.sleep(8)
+              print('TITLE:',drv.title)
+              print('URL:',drv.current_url)
+              print('BODY:',drv.find_element(By.TAG_NAME,'body').text[:1200].replace('\n',' | '))
+              forms=drv.find_elements(By.TAG_NAME,'form')
+              print('FORMS',len(forms))
+              for i,f in enumerate(forms):
+                print('FORM',i,'action=',f.get_attribute('action'),'method=',f.get_attribute('method'),'id=',f.get_attribute('id'),'name=',f.get_attribute('name'))
+              inputs=drv.find_elements(By.CSS_SELECTOR,'input,button,select')
+              for i,e in enumerate(inputs):
+                print('FIELD',i,'tag=',e.tag_name,'type=',e.get_attribute('type'),'name=',e.get_attribute('name'),'id=',e.get_attribute('id'),'value=',e.get_attribute('value'),'text=',e.text[:80])
+              if 'Date de début' in drv.find_element(By.TAG_NAME,'body').text and forms:
+                loaded=True
+                break
+            if not loaded:
+              raise RuntimeError('UFIP form did not load')
+
+            # Fill the two visible date controls by position among text/date inputs.
+            date_inputs=[e for e in drv.find_elements(By.CSS_SELECTOR,'input') if (e.get_attribute('type') or '').lower() in ('text','date')]
+            print('DATE_INPUTS',[(e.get_attribute('name'),e.get_attribute('id'),e.get_attribute('value')) for e in date_inputs])
+            if len(date_inputs)>=2:
+              for e,val in zip(date_inputs[:2],['01/08/2026','18/08/2026']):
+                drv.execute_script("arguments[0].value=arguments[1]; arguments[0].dispatchEvent(new Event('change',{bubbles:true}));",e,val)
+
+            # Keep only the Rotterdam GAZOLE checkbox if labels can be mapped; otherwise keep defaults.
+            checks=drv.find_elements(By.CSS_SELECTOR,'input[type=checkbox]')
+            print('CHECKBOX_COUNT',len(checks))
+            for c in checks:
+              cid=c.get_attribute('id')
+              label=''
+              if cid:
+                ls=drv.find_elements(By.CSS_SELECTOR,f'label[for="{cid}"]')
+                if ls: label=ls[0].text.strip()
+              if not label:
+                try: label=c.find_element(By.XPATH,'following-sibling::text()').text
+                except Exception: pass
+              print('CHECK',c.get_attribute('name'),cid,c.get_attribute('value'),'selected=',c.is_selected(),'label=',label)
+
+            # Button is the submit in the form; log it and click.
+            submits=[e for e in drv.find_elements(By.CSS_SELECTOR,'input[type=submit],button[type=submit],button') if 'retour' not in (e.get_attribute('value') or e.text or '').lower()]
+            print('SUBMITS',[(e.tag_name,e.get_attribute('name'),e.get_attribute('id'),e.get_attribute('value'),e.text) for e in submits])
+            if not submits: raise RuntimeError('No submit control found')
+            before=len(drv.get_log('performance'))
+            submits[0].click()
+            time.sleep(12)
+            logs=drv.get_log('performance')
+            print('\n=== NETWORK REQUESTS AFTER SUBMIT ===')
+            for entry in logs:
+              try:
+                msg=json.loads(entry['message'])['message']
+                if msg['method']!='Network.requestWillBeSent': continue
+                r=msg['params']['request']
+                u=r.get('url','')
+                if 'ufip' in u or 'energiesetmobilites' in u:
+                  print('REQ',r.get('method'),u)
+                  if r.get('postData'): print('POSTDATA',r['postData'])
+              except Exception as ex:
+                pass
+            print('\n=== DOWNLOADED FILES ===')
+            for p in outdir.iterdir():
+              print(p.name,p.stat().st_size)
+              if p.suffix.lower() in ('.xls','.xlsx','.csv'):
+                print('DOWNLOAD_PATH',p)
+          finally:
+            drv.quit()
+          PY
+          python /tmp/probe_ufip.py
