@@ -22,6 +22,36 @@ function autoNumberFr(v, digits=1, sign=false) {
   return `${sign&&n>=0?'+':''}${n.toFixed(digits).replace('.',',')}`;
 }
 
+// ── Repères géopolitiques / institutionnels ──────────────────────────────────
+// Les repères ne supposent pas qu'un événement est terminé : ils matérialisent des dates
+// utiles pour lire les ruptures de prix. Pour l'Iran, on distingue désormais le début des
+// hostilités, l'accord/cessez-le-feu du 17 juin et la reprise des frappes le 7 juillet 2026.
+function autoApplyEventMarkers(){
+  const iranStart=EVENTS.find(e=>e.date==='2026-02-28');
+  if(iranStart) iranStart.label='Début guerre Iran';
+
+  const iranColor='rgba(124,58,237,0.85)';
+  if(!EVENTS.some(e=>e.date==='2026-06-17')){
+    EVENTS.push({date:'2026-06-17',label:'Accord / cessez-le-feu Iran',color:iranColor});
+  }
+  if(!EVENTS.some(e=>e.date==='2026-07-07')){
+    EVENTS.push({date:'2026-07-07',label:'Reprise frappes Iran',color:iranColor});
+  }
+  EVENTS.sort((a,b)=>a.date.localeCompare(b.date));
+
+  const mobileLegend=document.getElementById('legende-events-mobile');
+  if(mobileLegend){
+    mobileLegend.innerHTML=`
+      <span style="color:rgba(220,38,38,0.85);font-weight:bold">─ ─</span> Invasion Ukraine (24 fév. 2022) &nbsp;
+      <span style="color:rgba(14,116,144,0.85);font-weight:bold">─ ─</span> Sanctions Autorité concurrence (17 nov. 2025) &nbsp;
+      <span style="color:${iranColor};font-weight:bold">─ ─</span> Début guerre Iran (28 fév. 2026) &nbsp;
+      <span style="color:${iranColor};font-weight:bold">─ ─</span> Accord / cessez-le-feu Iran (17 juin 2026) &nbsp;
+      <span style="color:${iranColor};font-weight:bold">─ ─</span> Reprise frappes Iran (7 juil. 2026)`;
+  }
+}
+
+autoApplyEventMarkers();
+
 // ── Fenêtre temporelle ───────────────────────────────────────────────────────
 // Le critère porte sur la largeur réellement disponible pour le graphe, et non sur
 // l'orientation de window. C'est indispensable quand le dashboard est intégré dans un iframe.
