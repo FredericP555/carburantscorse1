@@ -127,10 +127,16 @@ def parse_years(raw: str) -> list[int]:
     return sorted(set(values))
 
 
+def default_years(day: date | None = None) -> list[int]:
+    """Return the rolling N-1/N annual window used by the shared c1 -> c2 snapshot."""
+    day = day or date.today()
+    return [day.year - 1, day.year]
+
+
 def main() -> None:
-    today = date.today()
+    default_year_arg = ",".join(str(year) for year in default_years())
     parser = argparse.ArgumentParser()
-    parser.add_argument("--years", default=f"{today.year - 1},{today.year}")
+    parser.add_argument("--years", default=default_year_arg)
     parser.add_argument("--output", default="outputs/shared/official_13_20.csv.gz")
     parser.add_argument("--meta", default="outputs/shared/official_13_20.meta.json")
     args = parser.parse_args()
