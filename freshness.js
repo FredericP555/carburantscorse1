@@ -78,6 +78,44 @@
     }
     return typeof resolution!=='undefined'&&resolution==='w';
   }
+
+  function c1DisplayedSpanMonths(labels){
+    if(!Array.isArray(labels)||labels.length<2)return 60;
+    const toDate=s=>{
+      if(!s)return null;
+      const v=String(s);
+      return new Date((v.length===7?v+'-01':v)+'T12:00:00');
+    };
+    const first=toDate(labels[0]),last=toDate(labels[labels.length-1]);
+    if(!first||!last||Number.isNaN(first.getTime())||Number.isNaN(last.getTime()))return 60;
+    return Math.max(1,(last.getFullYear()-first.getFullYear())*12+(last.getMonth()-first.getMonth())+1);
+  }
+  function c1AdaptiveTickLabel(val){
+    const lbl=this.getLabelForValue(val);
+    if(!lbl)return '';
+    const labels=this.chart&&this.chart.data?this.chart.data.labels:[];
+    const spanMonths=c1DisplayedSpanMonths(labels);
+    const step=spanMonths<=15?2:spanMonths<=30?3:12;
+    const parts=String(lbl).split('-');
+    const month=Number(parts[1]||1),day=Number(parts[2]||1);
+    const monthOk=step===12?month===1:((month-1)%step===0);
+    if(typeof resolution!=='undefined'&&resolution==='d'&&(!monthOk||day!==1))return '';
+    if(typeof resolution!=='undefined'&&resolution==='w'&&(!monthOk||day>7))return '';
+    if(typeof resolution!=='undefined'&&resolution==='m'&&!monthOk)return '';
+    return typeof formatLabel==='function'?formatLabel(lbl):String(lbl);
+  }
+  function installC1AdaptiveAxis(){
+    if(typeof chartPrix==='undefined'||typeof chartEcart==='undefined'||!chartPrix||!chartEcart)return false;
+    [chartPrix,chartEcart].forEach(chart=>{
+      if(chart.options&&chart.options.scales&&chart.options.scales.x&&chart.options.scales.x.ticks){
+        chart.options.scales.x.ticks.callback=c1AdaptiveTickLabel;
+      }
+    });
+    chartPrix.update('none');
+    chartEcart.update('none');
+    return true;
+  }
+
   function ensureBadge(){
     let badge=document.getElementById('a4c-freshness-badge');
     if(badge)return badge;
@@ -137,14 +175,15 @@
   window.A4C_updateFreshnessBadge=updateFreshnessBadge;
   document.addEventListener('click',function(e){
     const t=e.target&&e.target.closest&&e.target.closest('[data-res],[data-carbu],#btn-daily,#btn-weekly,#btn-prix,#btn-marge,#btn-gz,#btn-sp,#btn-sp95ref,#btn-e10ref');
-    if(t)setTimeout(updateFreshnessBadge,0);
+    if(t)setTimeout(function(){updateFreshnessBadge();installC1AdaptiveAxis();},0);
   });
   window.addEventListener('load',function(){
     let tries=0;
     const timer=setInterval(function(){
       tries++;
       updateFreshnessBadge();
-      if(sourceMaxDate()||tries>30)clearInterval(timer);
+      const axisReady=installC1AdaptiveAxis();
+      if((sourceMaxDate()&&axisReady)||tries>30)clearInterval(timer);
     },100);
   });
 })();
