@@ -20,6 +20,7 @@ from pathlib import Path
 import xml.etree.ElementTree as ET
 
 import update_data_v2 as core
+import bouclier_detector
 
 DEPARTMENTS = {"13", "20"}
 FUELS = {"Gazole", "SP95", "E10"}
@@ -193,6 +194,7 @@ def main() -> None:
         "asset": output.name,
         "producer": "FredericP555/carburantscorse1",
         "method": "raw official declarations only; no c1 forward-fill or aggregation",
+        "bouclier": bouclier_detector.metadata(max(years)),
     }
     meta_path.write_text(json.dumps(metadata, ensure_ascii=False, indent=2), encoding="utf-8")
 
