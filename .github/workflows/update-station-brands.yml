@@ -17,8 +17,10 @@ on:
 permissions:
   contents: write
 
+# Serialize with the weekly production workflow because both can update
+# config/corse_station_brands.json and push to main.
 concurrency:
-  group: corsica-station-brands
+  group: weekly-fuel-observatory
   cancel-in-progress: false
 
 jobs:
