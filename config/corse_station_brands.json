@@ -1,11 +1,10 @@
 {
   "schema": "a4c-corsica-station-brands-v2",
-  "generated_at": "2026-08-19T12:19:15.155041+00:00",
+  "generated_at": "2026-08-19T13:12:34.107235+00:00",
   "source": {
-    "station_ids": "official Ministry instantaneous fuel-price API",
-    "station_dataset": "prix-des-carburants-en-france-flux-instantane-v2",
-    "enseigne": "official prix-carburants.gouv.fr station detail HTML",
-    "note": "The price feed already owns address/commune/coordinates; this registry only adds brand and A4C classification."
+    "station_ids": "official annual fuel-price stock already used by the A4C update",
+    "enseigne": "official prix-carburants.gouv.fr station detail HTML, queried only for new/unresolved IDs",
+    "note": "Known resolved IDs are not refetched; disappeared IDs remain for historical classification."
   },
   "classification": {
     "segments": [
@@ -16,18 +15,18 @@
     "unknown_policy": "inconnu is excluded from network comparisons",
     "corrections_file": "config/corse_station_brand_corrections.csv"
   },
-  "current_station_count": 124,
-  "verified_brand_count": 124,
+  "current_station_count": 121,
+  "verified_brand_count": 121,
   "fetch_error_count": 0,
   "unresolved_current_count": 0,
   "segment_counts_current": {
     "gms_lowcost": 0,
     "inconnu": 0,
-    "traditionnel": 124
+    "traditionnel": 121
   },
   "detail_counts_current": {
-    "major_tradi": 61,
-    "marque_tradi": 63
+    "major_tradi": 60,
+    "marque_tradi": 61
   },
   "stations": {
     "20000002": {
@@ -1125,7 +1124,7 @@
       "detail": "marque_tradi",
       "classification_source": "auto",
       "brand_source": "officiel",
-      "active": true,
+      "active": false,
       "first_seen": "2026-08-19",
       "last_seen": "2026-08-19",
       "verified_at": "2026-08-19T12:19:15.155041+00:00"
@@ -1136,7 +1135,7 @@
       "detail": "marque_tradi",
       "classification_source": "auto",
       "brand_source": "officiel",
-      "active": true,
+      "active": false,
       "first_seen": "2026-08-19",
       "last_seen": "2026-08-19",
       "verified_at": "2026-08-19T12:19:15.155041+00:00"
@@ -1180,7 +1179,7 @@
       "detail": "major_tradi",
       "classification_source": "auto",
       "brand_source": "officiel",
-      "active": true,
+      "active": false,
       "first_seen": "2026-08-19",
       "last_seen": "2026-08-19",
       "verified_at": "2026-08-19T12:19:15.155041+00:00"
