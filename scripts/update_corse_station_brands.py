@@ -13,6 +13,7 @@ available if a station closes, changes identifier or changes brand later.
 from __future__ import annotations
 
 import argparse
+from concurrent.futures import ThreadPoolExecutor
 import html
 import json
 import re
@@ -31,8 +32,10 @@ INSTANT_API = (
     "https://data.economie.gouv.fr/api/explore/v2.1/catalog/datasets/"
     "prix-des-carburants-en-france-flux-instantane-v2/records"
 )
-USER_AGENT = "A4C-observatoire-station-brands/1.1"
+USER_AGENT = "A4C-observatoire-station-brands/1.2"
 API_PAGE_SIZE = 100
+API_WORKERS = 6
+BRAND_WORKERS = 4
 
 
 class TextTokens(HTMLParser):
@@ -81,7 +84,7 @@ def canonical_brand(raw: str | None) -> str | None:
     return value
 
 
-def _request_bytes(url: str, *, timeout: int = 30, attempts: int = 3) -> bytes:
+def _request_bytes(url: str, *, timeout: int = 20, attempts: int = 2) -> bytes:
     """Small retry wrapper for the two official HTTP sources."""
     last_error: Exception | None = None
     for attempt in range(attempts):
@@ -98,7 +101,7 @@ def _request_bytes(url: str, *, timeout: int = 30, attempts: int = 3) -> bytes:
         except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError) as exc:
             last_error = exc
             if attempt + 1 < attempts:
-                time.sleep(0.6 * (attempt + 1))
+                time.sleep(0.5 * (attempt + 1))
     assert last_error is not None
     raise last_error
 
@@ -112,53 +115,54 @@ def _instant_api_page(offset: int) -> dict:
             "offset": offset,
         }
     )
-    raw = _request_bytes(f"{INSTANT_API}?{params}", timeout=45)
+    raw = _request_bytes(f"{INSTANT_API}?{params}", timeout=25)
     payload = json.loads(raw.decode("utf-8"))
     if not isinstance(payload, dict) or not isinstance(payload.get("results"), list):
         raise RuntimeError("Unexpected response from official instantaneous fuel API")
     return payload
 
 
+def _add_corsica_rows(stations: dict[str, dict], rows: list[dict]) -> None:
+    for row in rows:
+        cp = str(row.get("cp") or "").strip().zfill(5)
+        if not cp.startswith("20"):
+            continue
+        sid = str(row.get("id") or "").strip()
+        if not sid:
+            continue
+        stations[sid] = {
+            "station_id": sid,
+            "cp": cp,
+            "city": str(row.get("ville") or "").strip(),
+            "address": str(row.get("adresse") or "").strip(),
+            "pop": str(row.get("pop") or "").strip(),
+            "latitude": str(row.get("latitude") or "").strip(),
+            "longitude": str(row.get("longitude") or "").strip(),
+            "last_seen_year": date.today().year,
+        }
+
+
 def current_corsica_stations() -> dict[str, dict]:
     """Return current Corsica PDVs from the official instantaneous dataset, keyed by ID."""
-    stations: dict[str, dict] = {}
-    offset = 0
-    total_count: int | None = None
+    first = _instant_api_page(0)
+    total_count = int(first.get("total_count") or 0)
+    if total_count <= 0:
+        raise RuntimeError("Official instantaneous fuel API returned no stations")
 
-    while total_count is None or offset < total_count:
-        payload = _instant_api_page(offset)
-        if total_count is None:
-            total_count = int(payload.get("total_count") or 0)
-            if total_count <= 0:
-                raise RuntimeError("Official instantaneous fuel API returned no stations")
-        rows = payload["results"]
-        if not rows:
-            break
-        for row in rows:
-            cp = str(row.get("cp") or "").strip().zfill(5)
-            if not cp.startswith("20"):
-                continue
-            sid = str(row.get("id") or "").strip()
-            if not sid:
-                continue
-            stations[sid] = {
-                "station_id": sid,
-                "cp": cp,
-                "city": str(row.get("ville") or "").strip(),
-                "address": str(row.get("adresse") or "").strip(),
-                "pop": str(row.get("pop") or "").strip(),
-                "latitude": str(row.get("latitude") or "").strip(),
-                "longitude": str(row.get("longitude") or "").strip(),
-                "last_seen_year": date.today().year,
-            }
-        offset += len(rows)
+    stations: dict[str, dict] = {}
+    _add_corsica_rows(stations, first["results"])
+    offsets = list(range(API_PAGE_SIZE, total_count, API_PAGE_SIZE))
+    if offsets:
+        with ThreadPoolExecutor(max_workers=API_WORKERS) as executor:
+            for payload in executor.map(_instant_api_page, offsets):
+                _add_corsica_rows(stations, payload["results"])
 
     if not stations:
         raise RuntimeError("No Corsica station found in official instantaneous fuel API")
     return stations
 
 
-def fetch_brand(station_id: str, *, timeout: int = 30) -> tuple[str | None, str | None]:
+def fetch_brand(station_id: str, *, timeout: int = 12) -> tuple[str | None, str | None]:
     """Fetch the official station page and return its displayed brand."""
     url = STATION_URL.format(station_id=station_id)
     try:
@@ -178,7 +182,7 @@ def load_previous(path: Path) -> dict:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
-def build_registry(output: Path, *, delay: float = 0.08) -> dict:
+def build_registry(output: Path, *, delay: float = 0.05) -> dict:
     previous = load_previous(output)
     previous_stations = dict(previous.get("stations") or {})
     current = current_corsica_stations()
@@ -188,10 +192,20 @@ def build_registry(output: Path, *, delay: float = 0.08) -> dict:
     errors: dict[str, str] = {}
     refreshed = 0
     brand_counts: dict[str, int] = {}
+    ids = sorted(current)
 
-    for idx, sid in enumerate(sorted(current)):
+    def fetch_one(sid: str):
+        result = fetch_brand(sid)
+        if delay:
+            time.sleep(delay)
+        return sid, result
+
+    with ThreadPoolExecutor(max_workers=BRAND_WORKERS) as executor:
+        brand_results = dict(executor.map(fetch_one, ids))
+
+    for sid in ids:
         meta = current[sid]
-        brand_raw, error = fetch_brand(sid)
+        brand_raw, error = brand_results[sid]
         old = stations.get(sid) or {}
         if brand_raw is None and old.get("brand"):
             brand_raw = old.get("brand")
@@ -214,8 +228,6 @@ def build_registry(output: Path, *, delay: float = 0.08) -> dict:
         stations[sid] = entry
         if brand_group:
             brand_counts[brand_group] = brand_counts.get(brand_group, 0) + 1
-        if delay and idx + 1 < len(current):
-            time.sleep(delay)
 
     current_ids = set(current)
     for sid, entry in stations.items():
@@ -244,7 +256,7 @@ def build_registry(output: Path, *, delay: float = 0.08) -> dict:
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
-    parser.add_argument("--delay", type=float, default=0.08)
+    parser.add_argument("--delay", type=float, default=0.05)
     parser.add_argument("--max-errors", type=int, default=10)
     args = parser.parse_args()
 
