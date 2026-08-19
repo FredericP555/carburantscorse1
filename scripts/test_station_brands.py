@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+from resolve_corse_station_brands_incremental import ids_to_resolve
 from update_corse_station_brands import (
     classify_brand,
     classify_station,
@@ -49,4 +50,15 @@ assert classify_station('20200001', 'VITO', by_id, by_brand) == (
     'inconnu', 'inconnu', 'correction_id'
 )
 
-print('Station brand parser and A4C classification: OK')
+# Incremental rule: a known resolved ID causes zero official brand lookup; only a new or
+# still-unresolved ID is returned for resolution.
+stations = {
+    '20000006': {'enseigne': 'TotalEnergies', 'segment': 'traditionnel'},
+    '20000007': {'enseigne': '', 'segment': 'inconnu'},
+}
+assert ids_to_resolve({'20000006'}, stations) == []
+assert ids_to_resolve({'20000006', '20000007', '20999999'}, stations) == [
+    '20000007', '20999999'
+]
+
+print('Station brand parser, A4C classification and incremental resolution: OK')

@@ -1,4 +1,4 @@
-# Authoritative minimal Corsica station-brand registry refresh
+# Incremental Corsica station-brand registry maintenance
 name: Update Corsica station brands
 
 on:
@@ -9,6 +9,7 @@ on:
     branches: [main]
     paths:
       - 'scripts/update_corse_station_brands.py'
+      - 'scripts/resolve_corse_station_brands_incremental.py'
       - 'scripts/test_station_brands.py'
       - 'config/corse_station_brand_corrections.csv'
       - '.github/workflows/update-station-brands.yml'
@@ -37,15 +38,14 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
-      - name: Test brand parser and A4C classification
+      - name: Test brand parser and incremental classification
         run: python scripts/test_station_brands.py
 
-      - name: Refresh official Corsica station brands
+      - name: Resolve only new or unresolved Corsica station IDs
         run: >-
-          python scripts/update_corse_station_brands.py
+          python scripts/resolve_corse_station_brands_incremental.py
           --output config/corse_station_brands.json
           --corrections config/corse_station_brand_corrections.csv
-          --max-errors 10
 
       - name: Validate compact registry quality
         run: |
@@ -60,13 +60,13 @@ jobs:
           assert d['verified_brand_count'] >= d['current_station_count'] - 10
           assert set(d['segment_counts_current']) == {'gms_lowcost','traditionnel','inconnu'}
 
-          active=[v for v in d['stations'].values() if v.get('active')]
           allowed={'enseigne','segment','detail','classification_source','brand_source',
                    'active','first_seen','last_seen','verified_at'}
           assert all(set(v).issubset(allowed) for v in d['stations'].values())
           assert not any(any(k in v for k in ('address','city','cp','latitude','longitude'))
                          for v in d['stations'].values())
 
+          active=[v for v in d['stations'].values() if v.get('active')]
           brands=[str(v.get('enseigne') or '').casefold() for v in active]
           assert any('total' in b for b in brands), 'TotalEnergies absent'
           assert any(b.startswith('vito') for b in brands), 'VITO absent'
@@ -85,5 +85,5 @@ jobs:
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add config/corse_station_brands.json
-          git commit -m 'Refresh official Corsica station brands'
+          git commit -m 'Resolve new Corsica station brands'
           git push
