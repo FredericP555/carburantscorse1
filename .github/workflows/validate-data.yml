@@ -28,6 +28,21 @@ jobs:
       - name: Verify station brand HTML parser
         run: python scripts/test_station_brands.py
 
+      - name: Probe official live station-brand sources
+        run: |
+          python - <<'PY'
+          import sys
+          sys.path.insert(0, 'scripts')
+          import update_corse_station_brands as s
+          page=s._instant_api_page(0)
+          print('instant API:', page.get('total_count'), 'records; first page', len(page.get('results', [])))
+          brand,error=s.fetch_brand('20118001', timeout=15)
+          print('official station page 20118001:', brand, error)
+          assert page.get('total_count',0)>9000
+          assert len(page.get('results',[]))>0
+          assert brand and s.canonical_brand(brand)=='TotalEnergies', (brand,error)
+          PY
+
       - name: Verify year-boundary generation window
         run: python scripts/test_year_boundary.py
 
