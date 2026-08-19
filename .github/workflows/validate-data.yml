@@ -25,6 +25,9 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
+      - name: Verify station brand HTML parser
+        run: python scripts/test_station_brands.py
+
       - name: Verify year-boundary generation window
         run: python scripts/test_year_boundary.py
 

@@ -1,0 +1,70 @@
+name: Update Corsica station brands
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '17 5 1 * *'
+  push:
+    branches: [main]
+    paths:
+      - 'scripts/update_corse_station_brands.py'
+      - 'scripts/test_station_brands.py'
+      - '.github/workflows/update-station-brands.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: corsica-station-brands
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Test brand parser
+        run: python scripts/test_station_brands.py
+
+      - name: Refresh official Corsica station brands
+        run: python scripts/update_corse_station_brands.py --output config/corse_station_brands.json
+
+      - name: Validate registry
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          p=Path('config/corse_station_brands.json')
+          d=json.loads(p.read_text(encoding='utf-8'))
+          assert d['schema']=='a4c-corsica-station-brands-v1'
+          assert d['current_station_count'] >= 100, d['current_station_count']
+          assert d['refreshed_brand_count'] >= d['current_station_count'] - 10
+          groups={v.get('brand_group') for v in d['stations'].values() if v.get('active_current_year')}
+          for required in ('TotalEnergies','VITO','ENI'):
+              assert required in groups, (required, sorted(x for x in groups if x))
+          print('Registry OK:', d['current_station_count'], d['brand_counts_current'])
+          PY
+
+      - name: Commit registry if changed
+        run: |
+          if git diff --quiet -- config/corse_station_brands.json; then
+            echo 'No station-brand changes.'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add config/corse_station_brands.json
+          git commit -m 'Refresh official Corsica station brands'
+          git push
