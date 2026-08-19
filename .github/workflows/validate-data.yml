@@ -45,7 +45,7 @@ jobs:
         if: github.event_name == 'pull_request'
         run: |
           cp outputs/corse_station_brands.json config/corse_station_brands.json
-          if git diff --quiet -- config/corse_station_brands.json; then
+          if [ -z "$(git status --porcelain -- config/corse_station_brands.json)" ]; then
             echo 'Registry unchanged.'
             exit 0
           fi
