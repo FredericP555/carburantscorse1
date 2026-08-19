@@ -94,8 +94,6 @@ jobs:
             --notes "Snapshot normalisé 13/20 pour les observatoires A4C. Déclarations officielles brutes uniquement, sans règle métier propre à c1 ou c2." \
             --latest=false
 
-          # Keep only the eight newest shared snapshots. Cleanup is best-effort so an
-          # immutable-release policy can never block the weekly data publication.
           gh release list --repo "$GITHUB_REPOSITORY" --limit 100 --json tagName,createdAt \
             --jq '[.[] | select(.tagName | startswith("a4c-shared-"))] | sort_by(.createdAt) | reverse | .[8:] | .[].tagName' \
             | while read -r old_tag; do
@@ -126,6 +124,13 @@ jobs:
         if: steps.clock.outputs.run == 'true' && steps.changed.outputs.changed == 'true'
         run: python scripts/station_audit.py --candidate data-candidate.json --previous data.json --write-meta
 
+      - name: Resolve only new or unresolved Corsica station IDs
+        if: steps.clock.outputs.run == 'true' && steps.changed.outputs.changed == 'true'
+        run: >-
+          python scripts/resolve_corse_station_brands_incremental.py
+          --output config/corse_station_brands.json
+          --corrections config/corse_station_brand_corrections.csv
+
       - name: Validate candidate
         if: steps.clock.outputs.run == 'true' && steps.changed.outputs.changed == 'true'
         run: python scripts/validate_candidate.py
@@ -146,12 +151,13 @@ jobs:
         if: steps.clock.outputs.run == 'true' && steps.changed.outputs.changed == 'true'
         run: mv data-candidate.json data.json
 
-      - name: Commit updated data
+      - name: Commit updated data and station registry
         if: steps.clock.outputs.run == 'true' && steps.changed.outputs.changed == 'true'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add data.json
+          git add data.json config/corse_station_brands.json
+          git diff --cached --quiet && exit 0
           git commit -m "Update fuel data $(date -u +%Y-%m-%d)"
           git push origin main
 
