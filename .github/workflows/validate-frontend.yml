@@ -100,8 +100,8 @@ jobs:
           grep -E -q 'id="periodControl"[^>]*display: none' /tmp/desktop.html
           grep -q 'class="analyse-flow"' /tmp/desktop.html
           grep -q 'column-count:2' /tmp/desktop.html
-          grep -q '20 mars–6 avril 2026' /tmp/desktop.html
-          grep -q '8 avril–27 mai 2026' /tmp/desktop.html
+          grep -q 'Plafond TotalEnergies suivi' /tmp/desktop.html
+          grep -q 'Bouclier' /tmp/desktop.html
           python - <<'PY'
           s=open('/tmp/desktop.html',encoding='utf-8').read()
           assert '2 — EFFETS DES ACTIONS TOTALENERGIES' in s
