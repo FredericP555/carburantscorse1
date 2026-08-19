@@ -20,7 +20,7 @@ jobs:
         run: |
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          git add scripts/export_shared_c2_snapshot.py .github/workflows/validate-data.yml
+          git add scripts/export_shared_c2_snapshot.py
           git diff --cached --quiet && exit 0
           git commit -m "Publish bouclier detector metadata in shared snapshot"
           git push origin HEAD:agent/share-bouclier-meta
