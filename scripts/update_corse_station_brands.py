@@ -1,36 +1,38 @@
 #!/usr/bin/env python3
-"""Build the authoritative Corsica station -> brand registry.
+"""Build the authoritative Corsica station -> brand registry from official sources.
 
-Station IDs and station metadata come from the official annual price XML. The brand is not
-present in that open-data XML, but the official prix-carburants.gouv.fr station page exposes it
-as ``Marque : ...``. We therefore join both official sources on the station ID.
+The Ministry's instantaneous open-data API supplies the current station IDs and metadata.
+The open-data record deliberately has no brand field, while the official
+prix-carburants.gouv.fr station detail page exposes the brand as ``Marque : ...``.
+The registry joins those two official sources on the station ID.
 
 The registry is append-preserving: stations seen in previous runs remain in the file, while
-stations present in the current annual XML are refreshed from their official station page.
-This avoids losing historical IDs when a station closes or changes identifier.
+stations currently present in the instantaneous feed are refreshed. This keeps historical IDs
+available if a station closes, changes identifier or changes brand later.
 """
 from __future__ import annotations
 
 import argparse
 import html
-import io
 import json
 import re
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
-import zipfile
 from datetime import date, datetime, timezone
 from html.parser import HTMLParser
 from pathlib import Path
-import xml.etree.ElementTree as ET
-
-import update_data_v2 as core
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_OUTPUT = ROOT / "config" / "corse_station_brands.json"
 STATION_URL = "https://www.prix-carburants.gouv.fr/station/{station_id}"
-USER_AGENT = "A4C-observatoire-station-brands/1.0"
+INSTANT_API = (
+    "https://data.economie.gouv.fr/api/explore/v2.1/catalog/datasets/"
+    "prix-des-carburants-en-france-flux-instantane-v2/records"
+)
+USER_AGENT = "A4C-observatoire-station-brands/1.1"
+API_PAGE_SIZE = 100
 
 
 class TextTokens(HTMLParser):
@@ -45,7 +47,7 @@ class TextTokens(HTMLParser):
 
 
 def extract_brand_from_html(raw: str) -> str | None:
-    """Extract the official ``Marque`` value from one station details page."""
+    """Extract the official ``Marque`` value from one station detail page."""
     parser = TextTokens()
     parser.feed(raw)
     tokens = [html.unescape(t).strip() for t in parser.tokens if t.strip()]
@@ -65,11 +67,12 @@ def extract_brand_from_html(raw: str) -> str | None:
 
 
 def canonical_brand(raw: str | None) -> str | None:
+    """Group only the brands for which A4C needs a stable family name."""
     if not raw:
         return None
     value = " ".join(raw.split()).strip()
     folded = value.casefold()
-    if folded.startswith("totalenergies") or folded == "total":
+    if folded.startswith("totalenergies") or folded.startswith("total energies") or folded == "total":
         return "TotalEnergies"
     if folded.startswith("vito"):
         return "VITO"
@@ -78,58 +81,89 @@ def canonical_brand(raw: str | None) -> str | None:
     return value
 
 
-def current_corsica_stations(year: int) -> dict[str, dict]:
-    """Return current Corsica PDVs from the official annual XML, keyed by station ID."""
-    raw = core.download(year)
-    with zipfile.ZipFile(io.BytesIO(raw)) as zf:
-        name = next((n for n in zf.namelist() if n.lower().endswith(".xml")), None)
-        if not name:
-            raise RuntimeError("Official ZIP contains no XML")
-        stations: dict[str, dict] = {}
-        with zf.open(name) as fh:
-            for _event, elem in ET.iterparse(fh, events=("end",)):
-                if elem.tag.rsplit("}", 1)[-1] != "pdv":
-                    continue
-                cp = (elem.attrib.get("cp") or "").strip()
-                if not cp.startswith("20"):
-                    elem.clear()
-                    continue
-                sid = (elem.attrib.get("id") or "").strip()
-                if not sid:
-                    elem.clear()
-                    continue
-                address = ""
-                city = ""
-                for child in list(elem):
-                    tag = child.tag.rsplit("}", 1)[-1]
-                    if tag == "adresse":
-                        address = (child.text or "").strip()
-                    elif tag == "ville":
-                        city = (child.text or "").strip()
-                stations[sid] = {
-                    "station_id": sid,
-                    "cp": cp,
-                    "city": city,
-                    "address": address,
-                    "pop": elem.attrib.get("pop", ""),
-                    "latitude": elem.attrib.get("latitude", ""),
-                    "longitude": elem.attrib.get("longitude", ""),
-                    "last_seen_year": year,
-                }
-                elem.clear()
+def _request_bytes(url: str, *, timeout: int = 30, attempts: int = 3) -> bytes:
+    """Small retry wrapper for the two official HTTP sources."""
+    last_error: Exception | None = None
+    for attempt in range(attempts):
+        req = urllib.request.Request(
+            url,
+            headers={
+                "User-Agent": USER_AGENT,
+                "Accept": "application/json,text/html,application/xhtml+xml",
+            },
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as response:
+                return response.read()
+        except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError) as exc:
+            last_error = exc
+            if attempt + 1 < attempts:
+                time.sleep(0.6 * (attempt + 1))
+    assert last_error is not None
+    raise last_error
+
+
+def _instant_api_page(offset: int) -> dict:
+    params = urllib.parse.urlencode(
+        {
+            "select": "id,latitude,longitude,cp,pop,adresse,ville",
+            "order_by": "id",
+            "limit": API_PAGE_SIZE,
+            "offset": offset,
+        }
+    )
+    raw = _request_bytes(f"{INSTANT_API}?{params}", timeout=45)
+    payload = json.loads(raw.decode("utf-8"))
+    if not isinstance(payload, dict) or not isinstance(payload.get("results"), list):
+        raise RuntimeError("Unexpected response from official instantaneous fuel API")
+    return payload
+
+
+def current_corsica_stations() -> dict[str, dict]:
+    """Return current Corsica PDVs from the official instantaneous dataset, keyed by ID."""
+    stations: dict[str, dict] = {}
+    offset = 0
+    total_count: int | None = None
+
+    while total_count is None or offset < total_count:
+        payload = _instant_api_page(offset)
+        if total_count is None:
+            total_count = int(payload.get("total_count") or 0)
+            if total_count <= 0:
+                raise RuntimeError("Official instantaneous fuel API returned no stations")
+        rows = payload["results"]
+        if not rows:
+            break
+        for row in rows:
+            cp = str(row.get("cp") or "").strip().zfill(5)
+            if not cp.startswith("20"):
+                continue
+            sid = str(row.get("id") or "").strip()
+            if not sid:
+                continue
+            stations[sid] = {
+                "station_id": sid,
+                "cp": cp,
+                "city": str(row.get("ville") or "").strip(),
+                "address": str(row.get("adresse") or "").strip(),
+                "pop": str(row.get("pop") or "").strip(),
+                "latitude": str(row.get("latitude") or "").strip(),
+                "longitude": str(row.get("longitude") or "").strip(),
+                "last_seen_year": date.today().year,
+            }
+        offset += len(rows)
+
+    if not stations:
+        raise RuntimeError("No Corsica station found in official instantaneous fuel API")
     return stations
 
 
 def fetch_brand(station_id: str, *, timeout: int = 30) -> tuple[str | None, str | None]:
+    """Fetch the official station page and return its displayed brand."""
     url = STATION_URL.format(station_id=station_id)
-    req = urllib.request.Request(
-        url,
-        headers={"User-Agent": USER_AGENT, "Accept": "text/html,application/xhtml+xml"},
-    )
     try:
-        with urllib.request.urlopen(req, timeout=timeout) as response:
-            charset = response.headers.get_content_charset() or "utf-8"
-            raw = response.read().decode(charset, errors="replace")
+        raw_bytes = _request_bytes(url, timeout=timeout)
+        raw = raw_bytes.decode("utf-8", errors="replace")
     except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError) as exc:
         return None, f"{type(exc).__name__}: {exc}"
     brand = extract_brand_from_html(raw)
@@ -144,10 +178,10 @@ def load_previous(path: Path) -> dict:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
-def build_registry(year: int, output: Path, *, delay: float = 0.08) -> dict:
+def build_registry(output: Path, *, delay: float = 0.08) -> dict:
     previous = load_previous(output)
     previous_stations = dict(previous.get("stations") or {})
-    current = current_corsica_stations(year)
+    current = current_corsica_stations()
     checked_at = datetime.now(timezone.utc).isoformat()
 
     stations = dict(previous_stations)
@@ -188,34 +222,33 @@ def build_registry(year: int, output: Path, *, delay: float = 0.08) -> dict:
         if sid not in current_ids:
             entry["active_current_year"] = False
 
-    registry = {
+    return {
         "schema": "a4c-corsica-station-brands-v1",
         "generated_at": checked_at,
         "source": {
-            "station_ids": f"official annual XML {year}",
-            "brand": "official prix-carburants.gouv.fr station details HTML",
+            "station_ids": "official Ministry instantaneous fuel-price API",
+            "station_dataset": "prix-des-carburants-en-france-flux-instantane-v2",
+            "brand": "official prix-carburants.gouv.fr station detail HTML",
             "station_url_template": STATION_URL,
-            "note": "The annual open-data XML does not expose the brand; the official station page does.",
+            "note": "The open-data feed has no brand field; the official station page displays Marque. Both are joined on station_id.",
         },
-        "current_year": year,
+        "current_year": date.today().year,
         "current_station_count": len(current),
         "refreshed_brand_count": refreshed,
         "fetch_error_count": len(errors),
         "brand_counts_current": dict(sorted(brand_counts.items())),
         "stations": dict(sorted(stations.items())),
     }
-    return registry
 
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--year", type=int, default=date.today().year)
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
     parser.add_argument("--delay", type=float, default=0.08)
     parser.add_argument("--max-errors", type=int, default=10)
     args = parser.parse_args()
 
-    registry = build_registry(args.year, args.output, delay=args.delay)
+    registry = build_registry(args.output, delay=args.delay)
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(registry, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
