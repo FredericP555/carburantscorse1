@@ -28,6 +28,16 @@ jobs:
       - name: Verify station brand HTML parser
         run: python scripts/test_station_brands.py
 
+      - name: Build live Corsica station brand registry
+        run: python scripts/update_corse_station_brands.py --output outputs/corse_station_brands.json --max-errors 999
+
+      - name: Upload live station brand registry
+        uses: actions/upload-artifact@v4
+        with:
+          name: corsica-station-brands
+          path: outputs/corse_station_brands.json
+          retention-days: 7
+
       - name: Verify year-boundary generation window
         run: python scripts/test_year_boundary.py
 
