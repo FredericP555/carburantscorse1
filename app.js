@@ -33,6 +33,11 @@ const BOUCLIER = {
     {d1:'2024-07-01',d2:'2024-07-16'},{d1:'2026-03-13',d2:'2026-05-28'},
   ],
 };
+function getBouclierRanges(fuel) {
+  const b = DATA && DATA.meta && DATA.meta.bouclier && DATA.meta.bouclier[fuel];
+  return b && Array.isArray(b.ranges) ? b.ranges : [];
+}
+
 const ZONES = [
   {d1:'2022-09-01',d2:'2022-11-15',alpha_fill:0.18},
   {d1:'2022-11-16',d2:'2022-12-31',alpha_fill:0.12},
@@ -156,7 +161,7 @@ const zonesPlugin = {
       ctx.fillStyle=`rgba(34,197,94,${z.alpha_fill})`;
       ctx.fillRect(x1,top,x2-x1,bottom-top);
     });
-    (BOUCLIER[carbu]||[]).forEach(z=>{
+    getBouclierRanges(carbu).forEach(z=>{
       const x1=getDateX(chart,z.d1),x2=getDateX(chart,z.d2);
       if(x1==null||x2==null) return;
       ctx.fillStyle='rgba(251,191,36,0.20)';
