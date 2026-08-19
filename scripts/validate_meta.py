@@ -49,16 +49,27 @@ for fuel in ('Gazole','SP95'):
     else:
         assert e['total_action_ranges_used']==editorial_ranges, 'fuel-specific editorial action calendars diverged'
 
-    # Registry/data coverage guardrails. The recovered registry has 47 current TotalEnergies
-    # stations, but fuel availability differs: not every Total station necessarily has a fresh
-    # SP95 state within the 45-day dashboard window.
+    # Registry/data coverage guardrails.
     nt=b.get('latest_total_stations')
     nn=b.get('latest_non_total_stations')
     min_total={'Gazole':35,'SP95':25}[fuel]
     assert nt is not None and min_total <= nt <= 60, f'suspicious Total station coverage: {fuel}={nt}'
     assert nn is not None and nn >= 50, f'suspicious non-Total market coverage: {fuel}={nn}'
     assert b.get('latest_non_total_p75') is not None, f'missing non-Total p75: {fuel}'
-    assert 0 <= b.get('latest_near_share',0) <= 1
+    assert 0 <= b.get('latest_at_cap_share',0) <= 1
+    assert b.get('latest_at_cap_count') is not None and b['latest_at_cap_count'] >= 0
+
+    # Both observatories must use the one published effective-ceiling rule from c1.
+    rule=b['rule']
+    assert rule['min_total_at_cap_count']==1
+    assert abs(rule['cap_tolerance_below_cents']-0.2) < 1e-9
+    assert abs(rule['cap_tolerance_above_cents']-0.1) < 1e-9
+    assert rule['market_reference']=='75e percentile des stations corses non-Total'
+    assert rule['market_pressure_threshold']=='>= plafond'
+    assert rule['confirmation_days']==2
+    assert rule['confirmation_retroactive_to_first_day'] is True
+    assert rule['fill_gap_days']==1
+    assert rule['historical_ranges_recomputed_through']=='2025-12-31'
 
     # Independent population reconciliation: station_audit classifies all latest Corsica
     # station-fuel states, while bouclier_detector independently splits the retained population
@@ -73,7 +84,7 @@ for fuel in ('Gazole','SP95'):
         assert b['current_active_since']
         assert b['current_cap'] is not None
         assert b.get('latest_market_pressure') is True
-        assert b['latest_near_share'] >= b['rule']['min_total_near_share']
+        assert b['latest_at_cap_count'] >= 1
         assert b['latest_non_total_p75'] >= b['current_cap']
 
     prev=None

@@ -31,6 +31,9 @@ jobs:
       - name: Verify shared snapshot year window
         run: python scripts/test_shared_year_boundary.py
 
+      - name: Verify unified bouclier rule
+        run: python scripts/test_bouclier_rule.py
+
       - name: Verify recovered historical editorial method
         run: python scripts/validate_editorial_history.py
 
@@ -53,6 +56,7 @@ jobs:
           with gzip.open(data,'rt',encoding='utf-8') as f:
               header=f.readline().strip()
           assert 'station_id' in header and 'price_in_reference_band' in header
+          assert meta.get('bouclier') and set(meta['bouclier'])=={'Gazole','SP95'}
           print('Shared snapshot manifest: OK', meta['rows'], meta['max_date'], data.stat().st_size)
           PY
 
