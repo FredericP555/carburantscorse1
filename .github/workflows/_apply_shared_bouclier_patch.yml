@@ -1,0 +1,26 @@
+name: Apply shared bouclier patch (temporary)
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/share-bouclier-meta
+      - name: Apply patch
+        run: python scripts/_patch_shared_bouclier.py
+      - name: Commit patch
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add scripts/export_shared_c2_snapshot.py .github/workflows/validate-data.yml
+          git diff --cached --quiet && exit 0
+          git commit -m "Publish bouclier detector metadata in shared snapshot"
+          git push origin HEAD:agent/share-bouclier-meta
