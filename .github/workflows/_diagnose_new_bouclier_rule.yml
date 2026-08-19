@@ -1,0 +1,24 @@
+name: Diagnose unified bouclier rule (temporary)
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/unify-bouclier-rule-final
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: Recompute 2023-2026 with unified rule
+        run: python scripts/_diagnose_new_bouclier_rule.py
