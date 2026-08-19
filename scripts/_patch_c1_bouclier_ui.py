@@ -9,7 +9,8 @@ if helper not in s:
     s=s.replace(anchor,helper+anchor,1)
 old="(BOUCLIER[carbu]||[]).forEach(z=>{"
 new="getBouclierRanges(carbu).forEach(z=>{"
-if old not in s:
+if old in s:
+    s=s.replace(old,new,1)
+elif new not in s:
     raise SystemExit('shield rendering anchor not found')
-s=s.replace(old,new,1)
 p.write_text(s,encoding='utf-8')
