@@ -5,13 +5,15 @@ Known resolved IDs are never refetched from prix-carburants.gouv.fr. The annual 
 price stock already downloaded by the weekly pipeline supplies the station IDs; only an ID
 missing from the compact registry (or still unresolved) triggers one station-page lookup.
 
-Disappeared IDs are retained in the registry for historical series and merely marked inactive.
+Only IDs whose latest declaration falls inside the dashboard's current 45-day carry window are
+considered active. Disappeared IDs are retained in the registry for historical series and merely
+marked inactive.
 """
 from __future__ import annotations
 
 import argparse
 from concurrent.futures import ThreadPoolExecutor
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 import json
 from pathlib import Path
 from typing import Callable
@@ -21,6 +23,7 @@ from update_corse_station_brands import (
     DEFAULT_CORRECTIONS,
     DEFAULT_OUTPUT,
     SEGMENTS,
+    _norm,
     classify_station,
     fetch_brand,
     load_corrections,
@@ -31,16 +34,29 @@ WORKERS = 4
 
 
 def current_corsica_ids(year: int) -> set[str]:
-    """IDs seen in the current annual official stock; the ZIP is reused from workflow cache."""
+    """Return IDs relevant to the current c1 carry window; reuse the workflow ZIP cache."""
     changes = core.parse_year(year)
-    ids: set[str] = set()
+    latest_by_station: dict[str, date] = {}
+    source_dates: list[date] = []
     for (station_id, region, _fuel), values in changes.items():
         if region != "corse":
             continue
-        if any(ts.year == year for ts, _value in values):
-            ids.add(str(station_id))
-    if not ids:
+        dates = [ts.date() for ts, _value in values if ts.year == year]
+        if not dates:
+            continue
+        latest = max(dates)
+        sid = str(station_id)
+        previous = latest_by_station.get(sid)
+        latest_by_station[sid] = latest if previous is None else max(previous, latest)
+        source_dates.append(latest)
+    if not source_dates:
         raise RuntimeError(f"No Corsica station ID found in official stock for {year}")
+
+    source_max = max(source_dates)
+    cutoff = source_max - timedelta(days=core.MAX_FFILL_DAYS)
+    ids = {sid for sid, latest in latest_by_station.items() if latest >= cutoff}
+    if not ids:
+        raise RuntimeError(f"No Corsica station ID remains inside the {core.MAX_FFILL_DAYS}-day carry window")
     return ids
 
 
@@ -77,14 +93,12 @@ def _apply_explicit_corrections(
 ) -> bool:
     """Apply corrections to known IDs without rerunning automatic classification."""
     brand = str(entry.get("enseigne") or "")
-    # classify_station would also rerun the automatic rules. Use it only when an explicit
-    # correction exists, preserving the grandfathered classification otherwise.
-    brand_key = brand.casefold().strip()
+    # Preserve a known station's automatic classification. Only an explicit correction may
+    # change it without a new station ID; station-ID correction has final priority.
     correction = None
-    for key, value in by_brand.items():
-        if key == brand_key:
-            correction = (value, "correction_marque")
-            break
+    brand_correction = by_brand.get(_norm(brand))
+    if brand_correction:
+        correction = (brand_correction, "correction_marque")
     if station_id in by_id:
         correction = (by_id[station_id], "correction_id")
     if not correction:
