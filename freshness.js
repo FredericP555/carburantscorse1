@@ -116,6 +116,96 @@
     return true;
   }
 
+  // Classement C1 : dernière semaine complète, avec tendance vs semaine précédente.
+  function c1RankingContext(){
+    if(typeof DATA==='undefined'||!DATA||typeof getSeries!=='function'||typeof offsetToDate!=='function')return null;
+    const ck=(typeof carbu!=='undefined'&&carbu==='SP95')?'S':'G';
+    const weekly=getSeries(ck,'corse','w').filter(p=>p&&p[1]!=null);
+    if(!weekly.length)return null;
+    const daily=getSeries(ck,'corse','d').filter(p=>p&&p[1]!=null);
+    const maxDate=(DATA.meta&&DATA.meta.last_date)||(daily.length?offsetToDate(daily[daily.length-1][0]):null);
+    if(!maxDate)return null;
+    let chosen=null;
+    for(const row of weekly){
+      const start=offsetToDate(row[0]);
+      const end=addDays(start,6);
+      if(end&&end<=maxDate)chosen=row;
+    }
+    if(!chosen)return null;
+    const offset=Number(chosen[0]);
+    return {ck,offset,prevOffset:offset-7,start:offsetToDate(offset),end:addDays(offsetToDate(offset),6)};
+  }
+  function c1WeeklyTtc(key,offset,ck){
+    const rows=getSeries(ck,key,'w');
+    const row=rows.find(p=>p&&Number(p[0])===Number(offset)&&p[1]!=null);
+    return row?Number(row[1]):null;
+  }
+  function c1RankingWeekText(ctx){
+    if(!ctx)return '';
+    const start=parseIso(ctx.start),end=parseIso(ctx.end);
+    if(!start||!end)return '';
+    const months=['JANVIER','FÉVRIER','MARS','AVRIL','MAI','JUIN','JUILLET','AOÛT','SEPTEMBRE','OCTOBRE','NOVEMBRE','DÉCEMBRE'];
+    if(start.getUTCFullYear()===end.getUTCFullYear()&&start.getUTCMonth()===end.getUTCMonth()){
+      return `${start.getUTCDate()}–${end.getUTCDate()} ${months[end.getUTCMonth()]} ${end.getUTCFullYear()}`;
+    }
+    return `${start.getUTCDate()} ${months[start.getUTCMonth()]}–${end.getUTCDate()} ${months[end.getUTCMonth()]} ${end.getUTCFullYear()}`;
+  }
+  function c1UpdateRankingLabel(){
+    const ctx=c1RankingContext();
+    const rank=document.getElementById('rankLabel');
+    if(!ctx||!rank)return;
+    rank.textContent=`CLASSEMENT · SEMAINE ${c1RankingWeekText(ctx)} · ${String(carbu).toUpperCase()} TTC`;
+  }
+  function c1TrendMarkup(current,previous){
+    if(previous==null||!Number.isFinite(previous)){
+      return '<div class="rank-trend" title="Semaine précédente indisponible" style="width:30px;flex-shrink:0;text-align:center;color:#94a3b8;font-size:0.78rem;font-weight:800">→</div>';
+    }
+    const delta=current-previous;
+    let arrow='→',color='#94a3b8',label='stable';
+    if(delta>0.0005){arrow='↗';color='#dc2626';label='hausse';}
+    else if(delta< -0.0005){arrow='↘';color='#16a34a';label='baisse';}
+    const cents=delta*100;
+    const signed=(cents>0?'+':'')+cents.toFixed(1).replace('.',',');
+    return `<div class="rank-trend" title="${label} : ${signed} c/L vs semaine précédente" style="width:30px;flex-shrink:0;text-align:center;color:${color};font-size:0.86rem;font-weight:800;line-height:1">${arrow}</div>`;
+  }
+  function installC1WeeklyRanking(){
+    if(typeof buildRanking!=='function'||typeof ALL_KEYS==='undefined')return false;
+    if(window.__A4C_C1_WEEKLY_RANKING_INSTALLED__)return true;
+    buildRanking=function(){
+      const el=document.getElementById('rankRows');
+      if(!el)return;
+      el.innerHTML='';
+      const ctx=c1RankingContext();
+      if(!ctx)return;
+      const ranked=ALL_KEYS.filter(k=>k!=='moy_regions').map(k=>({
+        k,
+        v:c1WeeklyTtc(k,ctx.offset,ctx.ck),
+        prev:c1WeeklyTtc(k,ctx.prevOffset,ctx.ck),
+      })).filter(d=>d.v!=null).sort((a,b)=>b.v-a.v);
+      ranked.forEach((item,i)=>{
+        const row=document.createElement('div');
+        row.className='rank-row';
+        const name=item.k==='corse'?'Corse':((typeof LABELS!=='undefined'&&LABELS[item.k])||item.k);
+        row.innerHTML=`<div class="rank-num">${i+1}</div>
+          <div class="rank-dot" style="background:${(typeof COLORS!=='undefined'&&COLORS[item.k])||'#888'}"></div>
+          <div class="rank-name" style="color:${(typeof COLORS!=='undefined'&&COLORS[item.k])||'#888'}">${name}</div>
+          ${c1TrendMarkup(item.v,item.prev)}
+          <div class="rank-val">${item.v.toFixed(2)} €</div>`;
+        el.appendChild(row);
+      });
+      c1UpdateRankingLabel();
+    };
+    if(typeof applyDynamicLabels==='function'){
+      const baseApplyDynamicLabels=applyDynamicLabels;
+      applyDynamicLabels=function(){
+        baseApplyDynamicLabels();
+        c1UpdateRankingLabel();
+      };
+    }
+    window.__A4C_C1_WEEKLY_RANKING_INSTALLED__=true;
+    return true;
+  }
+
   function ensureBadge(){
     let badge=document.getElementById('a4c-freshness-badge');
     if(badge)return badge;
@@ -172,10 +262,11 @@
     badge.className=age==null?'warn':age<=3?'fresh':age<=7?'warn':'stale';
   }
 
+  installC1WeeklyRanking();
   window.A4C_updateFreshnessBadge=updateFreshnessBadge;
   document.addEventListener('click',function(e){
     const t=e.target&&e.target.closest&&e.target.closest('[data-res],[data-carbu],#btn-daily,#btn-weekly,#btn-prix,#btn-marge,#btn-gz,#btn-sp,#btn-sp95ref,#btn-e10ref');
-    if(t)setTimeout(function(){updateFreshnessBadge();installC1AdaptiveAxis();},0);
+    if(t)setTimeout(function(){updateFreshnessBadge();installC1AdaptiveAxis();installC1WeeklyRanking();},0);
   });
   window.addEventListener('load',function(){
     let tries=0;
@@ -183,7 +274,9 @@
       tries++;
       updateFreshnessBadge();
       const axisReady=installC1AdaptiveAxis();
-      if((sourceMaxDate()&&axisReady)||tries>30)clearInterval(timer);
+      const rankingReady=installC1WeeklyRanking();
+      if(typeof buildRanking==='function'&&typeof DATA!=='undefined'&&DATA){buildRanking();c1UpdateRankingLabel();}
+      if((sourceMaxDate()&&axisReady&&rankingReady)||tries>30)clearInterval(timer);
     },100);
   });
 })();

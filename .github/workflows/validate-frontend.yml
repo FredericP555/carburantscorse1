@@ -19,6 +19,7 @@ jobs:
         run: |
           node --check automation.js
           node --check editorial-patch.js
+          node --check freshness.js
 
       - name: Verify gap date alignment and explain TTC vs HT peaks
         run: |
@@ -61,11 +62,19 @@ jobs:
         run: |
           python - <<'PY' > /tmp/expected.env
           import json
+          from datetime import date,timedelta
           d=json.load(open('data.json',encoding='utf-8'))
-          y,m,day=map(int,d['meta']['last_date'].split('-'))
+          last=date.fromisoformat(d['meta']['last_date'])
           months=['janvier','février','mars','avril','mai','juin','juillet','août','septembre','octobre','novembre','décembre']
-          print('LAST_UPPER="'+f'{day} {months[m-1]} {y}'.upper()+'"')
-          print('MONTH_YEAR_LOWER="'+f'{months[m-1]} {y}'+'"')
+          print('MONTH_YEAR_LOWER="'+f'{months[last.month-1]} {last.year}'+'"')
+          monday=last-timedelta(days=last.weekday())
+          start=monday if last.weekday()==6 else monday-timedelta(days=7)
+          end=start+timedelta(days=6)
+          if start.year==end.year and start.month==end.month:
+              week=f'{start.day}–{end.day} {months[end.month-1]} {end.year}'.upper()
+          else:
+              week=f'{start.day} {months[start.month-1]}–{end.day} {months[end.month-1]} {end.year}'.upper()
+          print('RANK_WEEK="'+week+'"')
           gap=d['meta']['editorial']['Gazole']['observed_ytd_gap']
           print('GAP="'+f'{gap:+.1f}'.replace('.',',')+'"')
           PY
@@ -93,7 +102,9 @@ jobs:
       - name: Verify wide desktop uses full period and editorial flow
         run: |
           source /tmp/expected.env
-          grep -q "CLASSEMENT AU $LAST_UPPER" /tmp/desktop.html
+          grep -q "CLASSEMENT · SEMAINE $RANK_WEEK · GAZOLE TTC" /tmp/desktop.html
+          grep -q 'class="rank-trend"' /tmp/desktop.html
+          grep -q '>Corse<' /tmp/desktop.html
           grep -q "Historique disponible : janvier 2022 – $MONTH_YEAR_LOWER" /tmp/desktop.html
           grep -q "$GAP" /tmp/desktop.html
           ! grep -q "CLASSEMENT AU 28 MAI 2026" /tmp/desktop.html
