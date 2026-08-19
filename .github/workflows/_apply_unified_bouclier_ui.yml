@@ -1,0 +1,33 @@
+name: Apply unified bouclier UI (temporary)
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/unify-bouclier-rule
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Apply c1 dashboard patch
+        run: python scripts/_patch_c1_bouclier_ui.py
+      - name: Verify detector stabilization rule
+        run: python scripts/test_bouclier_rule.py
+      - name: Check dashboard JavaScript syntax
+        run: node --check app.js
+      - name: Commit dashboard patch
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add app.js
+          git diff --cached --quiet && exit 0
+          git commit -m "Render c1 bouclier ranges from detector metadata"
+          git push origin HEAD:agent/unify-bouclier-rule
