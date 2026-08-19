@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   validate:
@@ -15,6 +15,9 @@ jobs:
     steps:
       - name: Checkout automation branch
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref || github.ref_name }}
+          fetch-depth: 0
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -37,6 +40,20 @@ jobs:
           name: corsica-station-brands
           path: outputs/corse_station_brands.json
           retention-days: 7
+
+      - name: Persist registry on PR branch
+        if: github.event_name == 'pull_request'
+        run: |
+          cp outputs/corse_station_brands.json config/corse_station_brands.json
+          if git diff --quiet -- config/corse_station_brands.json; then
+            echo 'Registry unchanged.'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add config/corse_station_brands.json
+          git commit -m 'Add verified official Corsica station brands'
+          git push origin HEAD:${GITHUB_HEAD_REF}
 
       - name: Verify year-boundary generation window
         run: python scripts/test_year_boundary.py
