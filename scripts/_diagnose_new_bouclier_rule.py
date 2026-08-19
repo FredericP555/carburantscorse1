@@ -37,6 +37,16 @@ def percentile(values,q):
 
 def stable(items):
     vals=[[d,b] for d,b in sorted(items)]
+    # 1) Confirmation : seules les séquences de >=2 jours bruts consécutifs sont retenues.
+    i=0
+    while i<len(vals):
+        if not vals[i][1]: i+=1; continue
+        j=i
+        while j<len(vals) and vals[j][1] and (j==i or vals[j][0]==vals[j-1][0]+timedelta(days=1)): j+=1
+        if j-i<MIN_RUN:
+            for k in range(i,j): vals[k][1]=False
+        i=j
+    # 2) Stabilisation : un seul jour inactif peut être comblé entre deux périodes confirmées.
     i=0
     while i<len(vals):
         if vals[i][1]: i+=1; continue
@@ -47,14 +57,6 @@ def stable(items):
         right=j<len(vals) and vals[j][1] and vals[j][0]==vals[j-1][0]+timedelta(days=1)
         if left and right and gap<=MAX_GAP:
             for k in range(i,j): vals[k][1]=True
-        i=j
-    i=0
-    while i<len(vals):
-        if not vals[i][1]: i+=1; continue
-        j=i
-        while j<len(vals) and vals[j][1] and (j==i or vals[j][0]==vals[j-1][0]+timedelta(days=1)): j+=1
-        if j-i<MIN_RUN:
-            for k in range(i,j): vals[k][1]=False
         i=j
     return vals
 
