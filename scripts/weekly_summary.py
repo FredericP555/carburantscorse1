@@ -40,8 +40,15 @@ def main():
 
     print("\n## Nettoyage des stations corses")
     audit = m["station_audit"]
-    print(f"État au **{audit['as_of']}**, forward-fill maximal **{audit['max_ffill_days']} jours**.")
-    print("Une station n'est retenue que si son dernier état est valide et âgé d'au plus 45 jours.")
+    threshold = audit.get("max_station_inactive_days", audit.get("max_ffill_days"))
+    print(
+        f"État au **{audit['as_of']}**. Une station reste active pendant **{threshold} jours** "
+        "après sa dernière déclaration Gazole/SP95 ou son dernier événement de rupture."
+    )
+    print(
+        "Un prix de carburant inchangé peut être plus ancien : il reste retenu tant que la "
+        "station reste active, que le dernier prix est valide et qu'aucune rupture n'est ouverte."
+    )
 
     for fuel in ("Gazole", "SP95"):
         a = audit["fuels"][fuel]
@@ -49,16 +56,36 @@ def main():
         print(f"- Séries station-carburant connues (stocks N-1/N) : **{a['known_station_fuel_series']}**")
         print(f"- Ayant déclaré au moins une fois cette année : **{a['declared_current_year']}**")
         print(f"- Retenues dans la moyenne du dernier jour : **{a['retained']}**")
-        print(f"- Exclues car dernier prix trop ancien : **{a['excluded_stale']}**")
+        print(
+            f"- Retenues malgré un prix de plus de {threshold} jours car station active : "
+            f"**{a.get('retained_old_price_active_station', 0)}**"
+        )
+        print(f"- Exclues car station inactive : **{a.get('excluded_inactive_station', a.get('excluded_stale', 0))}**")
+        print(f"- Exclues car rupture du carburant encore active : **{a.get('excluded_active_rupture', 0)}**")
         print(f"- Exclues car dernier prix invalide : **{a['excluded_invalid_latest']}**")
         print(f"- Exclues faute d'état antérieur exploitable : **{a['excluded_no_prior']}**")
+
+        old_ids = a.get("retained_old_price_active_station_ids", [])
+        if old_ids:
+            ids = ", ".join(x["station_id"] for x in old_ids[:20])
+            suffix = " …" if len(old_ids) > 20 else ""
+            print(f"- IDs prix ancien / station active (20 max) : `{ids}{suffix}`")
+
+        inactive_ids = a.get("excluded_inactive_station_ids", a.get("excluded_stale_ids", []))
+        if inactive_ids:
+            ids = ", ".join(x["station_id"] for x in inactive_ids[:20])
+            suffix = " …" if len(inactive_ids) > 20 else ""
+            print(f"- IDs stations inactives (20 max) : `{ids}{suffix}`")
+
+        rupture_ids = a.get("excluded_active_rupture_ids", [])
+        if rupture_ids:
+            ids = ", ".join(x["station_id"] for x in rupture_ids[:20])
+            suffix = " …" if len(rupture_ids) > 20 else ""
+            print(f"- IDs en rupture active (20 max) : `{ids}{suffix}`")
+
         if a["excluded_invalid_ids"]:
             ids = ", ".join(x["station_id"] for x in a["excluded_invalid_ids"])
             print(f"- IDs avec dernier prix invalide : `{ids}`")
-        if a["excluded_stale_ids"]:
-            ids = ", ".join(x["station_id"] for x in a["excluded_stale_ids"][:20])
-            suffix = " …" if len(a["excluded_stale_ids"]) > 20 else ""
-            print(f"- IDs trop anciens (20 max affichés) : `{ids}{suffix}`")
 
     print("\n### Garde-fous de publication")
     g = audit["guardrails"]
