@@ -10,14 +10,13 @@ A day is a raw active day when:
    0.2 c/L below to 0.1 c/L above it;
 3. the 75th percentile of active non-Total Corsica stations is at or above the ceiling.
 
+Station activity follows the same rule as the dashboard average: the station must have had a
+Gazole/SP95 declaration or rupture event within the last 45 days. An unchanged fuel price can
+remain usable for longer than 45 days while the station itself remains active, unless that fuel
+has an active rupture or its latest declared price is invalid.
+
 A period is confirmed after 2 consecutive raw active days, but starts on the first of those two
 days. Once periods are confirmed, a single inactive day between two confirmed runs is filled.
-A lone active day is therefore never enough by itself, and two lone days separated by one day
-cannot create a false period.
-
-The 2023-2025 ranges were recomputed once with this exact rule from the official historical
-stocks and are frozen below for reproducibility and weekly performance. From 2026 onward the
-same rule is recomputed dynamically from the official annual stock.
 """
 from __future__ import annotations
 
@@ -35,7 +34,7 @@ MARKET_QUANTILE = 0.75
 MARKET_PRESSURE_TOLERANCE_EUR = 0.0
 CONFIRMATION_DAYS = 2
 MAX_GAP_DAYS = 1
-MAX_AGE_DAYS = core.MAX_FFILL_DAYS
+MAX_STATION_INACTIVE_DAYS = core.MAX_STATION_INACTIVE_DAYS
 DYNAMIC_START_YEAR = 2026
 HISTORICAL_RULE_FROZEN_THROUGH = date(2025, 12, 31)
 
@@ -44,7 +43,6 @@ CURRENT_TOTAL_IDS = set(REGISTRY['stations'])
 HISTORICAL_TOTAL_IDS = set(REGISTRY.get('historical_aliases', {}))
 TOTAL_IDS = CURRENT_TOTAL_IDS | HISTORICAL_TOTAL_IDS
 
-# Recomputed from the official historical stocks with this exact rule on 19 Aug 2026.
 HISTORICAL_RULE_RANGES = {
     'Gazole': [
         (date(2023, 9, 12), date(2023, 11, 2)),
@@ -57,10 +55,6 @@ HISTORICAL_RULE_RANGES = {
     ],
 }
 
-
-# Historical editorial compatibility only. These recovered action windows reproduce the
-# published "hors toute action TotalEnergies" analysis; they are NOT used to draw the
-# effective-ceiling yellow zones, which come from HISTORICAL_RULE_RANGES + dynamic detection.
 LEGACY_RANGES = {
     'Gazole': [
         (date(2023, 8, 31), date(2023, 10, 13)),
@@ -82,7 +76,6 @@ LEGACY_RANGES = {
 
 
 def cap_for(fuel: str, d: date) -> float | None:
-    """Return the formal TotalEnergies ceiling applicable on a date."""
     if fuel == 'SP95':
         return 1.99 if d >= date(2023, 3, 1) else None
     if fuel == 'Gazole':
@@ -109,11 +102,8 @@ def percentile(values: list[float], q: float) -> float | None:
 
 
 def _stable_flags(items: list[tuple[date, bool]]) -> list[tuple[date, bool]]:
-    """Confirm 2-day runs first, then fill at most one day between confirmed runs."""
     vals = [[d, b] for d, b in sorted(items)]
 
-    # First enforce the two-consecutive-day confirmation. This preserves the first day of a
-    # confirmed run, so confirmation on day 2 is retroactive to day 1.
     i = 0
     while i < len(vals):
         if not vals[i][1]:
@@ -131,8 +121,6 @@ def _stable_flags(items: list[tuple[date, bool]]) -> list[tuple[date, bool]]:
                 vals[k][1] = False
         i = j
 
-    # Only after confirmation may one isolated inactive day be filled between two confirmed
-    # portions. Two raw singletons can therefore never be joined into a false active period.
     i = 0
     while i < len(vals):
         if vals[i][1]:
@@ -186,13 +174,20 @@ def _merge_ranges(ranges: list[tuple[date, date]]) -> list[tuple[date, date]]:
 
 def detect_year(year: int | None = None) -> dict:
     year = year or date.today().year
+    prices, activity, ruptures = core.load_market_state(year)
+
     combined = defaultdict(list)
-    for y in (year - 1, year):
-        for (sid, region, fuel), vals in core.parse_year(y).items():
-            if region == 'corse' and fuel in ('Gazole', 'SP95'):
-                combined[(sid, fuel)].extend(vals)
+    for (sid, region, fuel), vals in prices.items():
+        if region == 'corse' and fuel in ('Gazole', 'SP95'):
+            combined[(sid, fuel)].extend(vals)
     for vals in combined.values():
         vals.sort(key=lambda x: x[0])
+
+    corsica_activity = {
+        sid: sorted(vals)
+        for (sid, region), vals in activity.items()
+        if region == 'corse'
+    }
 
     start = date(year, 1, 1)
     end = min(date(year, 12, 31), date.today() - timedelta(days=1))
@@ -200,27 +195,46 @@ def detect_year(year: int | None = None) -> dict:
 
     for fuel in ('Gazole', 'SP95'):
         station_ids = {sid for sid, f in combined if f == fuel}
-        ptr = {sid: 0 for sid in station_ids}
-        state = {sid: None for sid in station_ids}
+        price_ptr = {sid: 0 for sid in station_ids}
+        price_state = {sid: None for sid in station_ids}
+        activity_ptr = {sid: 0 for sid in station_ids}
+        activity_state = {sid: None for sid in station_ids}
         raw = []
         stats = {}
+
         d = start
         while d <= end:
             total_prices = []
             non_total_prices = []
+
             for sid in station_ids:
                 vals = combined.get((sid, fuel), [])
-                j = ptr[sid]
+                j = price_ptr[sid]
                 while j < len(vals) and vals[j][0].date() <= d:
-                    state[sid] = vals[j]
+                    price_state[sid] = vals[j]
                     j += 1
-                ptr[sid] = j
-                st = state[sid]
+                price_ptr[sid] = j
+
+                acts = corsica_activity.get(sid, [])
+                a = activity_ptr[sid]
+                while a < len(acts) and acts[a].date() <= d:
+                    activity_state[sid] = acts[a]
+                    a += 1
+                activity_ptr[sid] = a
+
+                st = price_state[sid]
                 if st is None:
                     continue
-                ts, value = st
-                if (d - ts.date()).days > MAX_AGE_DAYS or value is None:
+                price_ts, value = st
+                if not core.fuel_value_eligible(
+                    price_ts,
+                    value,
+                    activity_state[sid],
+                    ruptures.get((sid, 'corse', fuel), []),
+                    d,
+                ):
                     continue
+
                 if sid in TOTAL_IDS:
                     total_prices.append(value)
                 else:
@@ -247,7 +261,6 @@ def detect_year(year: int | None = None) -> dict:
                     'non_total_stations': len(non_total_prices),
                     'at_cap_count': at_cap,
                     'at_cap_share': at_cap_share,
-                    # Backward-compatible aliases used by existing summaries.
                     'near_count': at_cap,
                     'near_share': at_cap_share,
                     'non_total_p75': market_p75,
@@ -268,7 +281,6 @@ def detect_year(year: int | None = None) -> dict:
 
 
 def display_ranges(fuel: str, detected_by_year: dict[int, dict], through_year: int) -> list[tuple[date, date]]:
-    """Combine rule-derived frozen history with dynamic ranges from 2026 onward."""
     ranges = [
         (a, b)
         for a, b in HISTORICAL_RULE_RANGES[fuel]
@@ -289,7 +301,6 @@ def metadata(year: int | None = None) -> dict:
         }
         current_det = detected_by_year[year]
     else:
-        # Kept for diagnostic/backfill use. Production currently runs from 2026 onward.
         detected_by_year = {}
         current_det = detect_year(year)
 
@@ -317,7 +328,6 @@ def metadata(year: int | None = None) -> dict:
             'latest_non_total_stations': s.get('non_total_stations'),
             'latest_at_cap_count': s.get('at_cap_count'),
             'latest_at_cap_share': round(at_cap_share, 4) if at_cap_share is not None else None,
-            # Backward-compatible name retained for existing editorial consumers.
             'latest_near_share': round(at_cap_share, 4) if at_cap_share is not None else None,
             'latest_non_total_p75': round(s.get('non_total_p75'), 3) if s.get('non_total_p75') is not None else None,
             'latest_market_pressure': s.get('market_pressure'),
@@ -328,6 +338,9 @@ def metadata(year: int | None = None) -> dict:
                 'min_total_at_cap_count': MIN_TOTAL_AT_CAP_COUNT,
                 'market_reference': '75e percentile des stations corses non-Total',
                 'market_pressure_threshold': '>= plafond',
+                'station_activity_days': MAX_STATION_INACTIVE_DAYS,
+                'fuel_price_may_outlive_activity_window': True,
+                'active_rupture_excluded': True,
                 'confirmation_days': CONFIRMATION_DAYS,
                 'confirmation_retroactive_to_first_day': True,
                 'fill_gap_days': MAX_GAP_DAYS,
