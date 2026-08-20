@@ -66,6 +66,10 @@ jobs:
         if: steps.clock.outputs.run == 'true'
         run: pip install -r requirements.txt
 
+      - name: Verify station activity carry-forward policy
+        if: steps.clock.outputs.run == 'true'
+        run: python tests/test_station_activity_policy.py
+
       - name: Verify recovered historical editorial method
         if: steps.clock.outputs.run == 'true'
         run: python scripts/validate_editorial_history.py
