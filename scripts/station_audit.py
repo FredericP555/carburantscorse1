@@ -1,19 +1,21 @@
 #!/usr/bin/env python3
 """Audit Corsica station eligibility before publishing a weekly update.
 
-The dashboard average is built from station-fuel series after three filters:
-- motorway stations (pop=A) are already discarded by update_data_v2.parse_year();
-- a station whose last declaration is older than MAX_FFILL_DAYS is stale and excluded;
-- a station whose latest declaration is numerically suspect is excluded until a later valid declaration.
+Policy:
+- motorway stations (pop=A) are already discarded by update_data_v2;
+- the 45-day threshold applies to station activity, not to each fuel independently;
+- while a station remains active, its last valid Gazole/SP95 price remains usable even when
+  that fuel itself has not changed for more than 45 days;
+- an active rupture suppresses the affected fuel;
+- a suspicious latest price suppresses the affected fuel until a later valid declaration.
 
-This script reconstructs the exact latest-day eligibility state for Corsica, stores the audit in
-``data-candidate.json`` and applies guardrails before publication.
+The audit deliberately records "old price / active station" cases instead of hiding them so
+long-lived unchanged prices (notably capped SP95) remain visible to the weekly control.
 """
 from __future__ import annotations
 
 import argparse
 import json
-from collections import defaultdict
 from datetime import date, timedelta
 from pathlib import Path
 
@@ -23,7 +25,6 @@ ORIGIN = core.ORIGIN
 MIN_RETAINED = {"Gazole": 80, "SP95": 60}
 MAX_RETAINED_DROP = 0.20
 MAX_INVALID_SHARE = 0.05
-# First verified audit, used only until data.json contains its own previous audit baseline.
 BOOTSTRAP_AS_OF = date(2026, 8, 17)
 BOOTSTRAP_RETAINED = {"Gazole": 121, "SP95": 106}
 
@@ -40,16 +41,8 @@ def candidate_last_date(data: dict) -> date:
     return ORIGIN + timedelta(days=offs[0])
 
 
-def load_changes(year: int):
-    changes = defaultdict(list)
-    for y in (year - 1, year):
-        for key, vals in core.parse_year(y).items():
-            changes[key].extend(vals)
-    return changes
-
-
 def latest_daily_update(vals, as_of: date):
-    """Return the last declaration on/before as_of, with last declaration of a day winning."""
+    """Return the last official declaration on/before as_of; last declaration of day wins."""
     per_day = {}
     for ts, value in vals:
         if ts.date() <= as_of:
@@ -59,15 +52,22 @@ def latest_daily_update(vals, as_of: date):
     return max(per_day.values(), key=lambda x: x[0])
 
 
-def audit_fuel(changes, fuel: str, year: int, as_of: date):
+def latest_activity(vals, as_of: date):
+    eligible = [ts for ts in vals if ts.date() <= as_of]
+    return max(eligible) if eligible else None
+
+
+def audit_fuel(prices, activity, ruptures, fuel: str, year: int, as_of: date):
     station_vals = {
         sid: vals
-        for (sid, region, f), vals in changes.items()
+        for (sid, region, f), vals in prices.items()
         if region == "corse" and f == fuel
     }
 
     retained = []
-    stale = []
+    retained_old_price = []
+    inactive = []
+    active_rupture = []
     invalid = []
     no_prior = []
     declared_current_year = 0
@@ -82,23 +82,32 @@ def audit_fuel(changes, fuel: str, year: int, as_of: date):
             continue
 
         ts, value = latest
-        age = (as_of - ts.date()).days
+        price_age = (as_of - ts.date()).days
+        station_ts = latest_activity(activity.get((sid, "corse"), []), as_of)
+        station_age = (as_of - station_ts.date()).days if station_ts is not None else None
         detail = {
             "station_id": sid,
-            "last_date": str(ts.date()),
-            "age_days": age,
+            "last_price_date": str(ts.date()),
+            "price_age_days": price_age,
+            "last_station_activity_date": str(station_ts.date()) if station_ts else None,
+            "station_activity_age_days": station_age,
         }
 
-        # Match build_daily(): age is checked before the invalid-state test.
-        if age > core.MAX_FFILL_DAYS:
-            stale.append(detail)
+        if not core.station_active(station_ts, as_of):
+            inactive.append(detail)
         elif value is None:
             invalid.append(detail)
+        elif core.rupture_active(ruptures.get((sid, "corse", fuel), []), as_of):
+            active_rupture.append(detail)
         else:
             retained.append(detail)
+            if price_age > core.MAX_STATION_INACTIVE_DAYS:
+                retained_old_price.append(detail)
 
     known = len(station_vals)
-    reconciled = len(retained) + len(stale) + len(invalid) + len(no_prior)
+    reconciled = (
+        len(retained) + len(inactive) + len(active_rupture) + len(invalid) + len(no_prior)
+    )
     if reconciled != known:
         raise RuntimeError(f"Audit reconciliation failed for {fuel}: {reconciled} != {known}")
 
@@ -108,13 +117,19 @@ def audit_fuel(changes, fuel: str, year: int, as_of: date):
         "declared_current_year": declared_current_year,
         "previous_year_only": previous_year_only,
         "retained": len(retained),
-        "excluded_stale": len(stale),
+        "retained_old_price_active_station": len(retained_old_price),
+        "excluded_inactive_station": len(inactive),
+        "excluded_active_rupture": len(active_rupture),
         "excluded_invalid_latest": len(invalid),
         "excluded_no_prior": len(no_prior),
+        "excluded_stale": len(inactive),
         "retained_share": round(len(retained) / known, 4) if known else None,
-        "excluded_stale_ids": stale,
+        "retained_old_price_active_station_ids": retained_old_price,
+        "excluded_inactive_station_ids": inactive,
+        "excluded_active_rupture_ids": active_rupture,
         "excluded_invalid_ids": invalid,
         "excluded_no_prior_ids": no_prior,
+        "excluded_stale_ids": inactive,
     }
 
 
@@ -122,12 +137,17 @@ def build_audit(candidate: dict, year: int):
     as_of = candidate_last_date(candidate)
     if as_of.year != year:
         raise RuntimeError(f"Candidate year {as_of.year} differs from requested audit year {year}")
-    changes = load_changes(year)
-    fuels = {fuel: audit_fuel(changes, fuel, year, as_of) for fuel in ("Gazole", "SP95")}
+    prices, activity, ruptures = core.load_market_state(year)
+    fuels = {
+        fuel: audit_fuel(prices, activity, ruptures, fuel, year, as_of)
+        for fuel in ("Gazole", "SP95")
+    }
     return {
         "as_of": str(as_of),
         "scope": "Corse, hors stations pop=A, Gazole/SP95, stocks annuels N-1 et N",
-        "max_ffill_days": core.MAX_FFILL_DAYS,
+        "station_activity_policy": True,
+        "max_station_inactive_days": core.MAX_STATION_INACTIVE_DAYS,
+        "max_ffill_days": core.MAX_STATION_INACTIVE_DAYS,
         "guardrails": {
             "minimum_retained": MIN_RETAINED,
             "maximum_retained_drop_vs_previous_audit": MAX_RETAINED_DROP,
@@ -135,6 +155,7 @@ def build_audit(candidate: dict, year: int):
             "bootstrap_reference": {
                 "as_of": str(BOOTSTRAP_AS_OF),
                 "retained": BOOTSTRAP_RETAINED,
+                "note": "ancienne politique par anciennete du prix; conservee comme seuil bas historique",
             },
         },
         "fuels": fuels,
@@ -160,8 +181,6 @@ def validate_audit(audit: dict, previous: dict | None):
                 f"Too many latest invalid prices for {fuel}: {invalid}/{known} > {MAX_INVALID_SHARE:.0%}"
             )
 
-        # Prefer the last published audit. Before the first audited publication, use the
-        # verified 17 Aug 2026 population so the very first production run is also protected.
         reference = None
         label = None
         if previous:
@@ -184,21 +203,35 @@ def validate_audit(audit: dict, previous: dict | None):
 
 def print_report(audit: dict):
     print(f"STATION AUDIT — Corse — {audit['as_of']}")
+    print(
+        f"Policy: station activity <= {audit['max_station_inactive_days']} days; "
+        "old unchanged fuel prices remain eligible while station stays active."
+    )
     for fuel in ("Gazole", "SP95"):
         a = audit["fuels"][fuel]
         print(
             f"{fuel}: known={a['known_station_fuel_series']}, "
             f"declared_current_year={a['declared_current_year']}, retained={a['retained']}, "
-            f"stale={a['excluded_stale']}, invalid_latest={a['excluded_invalid_latest']}, "
-            f"no_prior={a['excluded_no_prior']}"
+            f"old_price_active_station={a['retained_old_price_active_station']}, "
+            f"inactive_station={a['excluded_inactive_station']}, "
+            f"active_rupture={a['excluded_active_rupture']}, "
+            f"invalid_latest={a['excluded_invalid_latest']}, no_prior={a['excluded_no_prior']}"
         )
+        if a["retained_old_price_active_station_ids"]:
+            ids = ", ".join(x["station_id"] for x in a["retained_old_price_active_station_ids"][:20])
+            suffix = " ..." if len(a["retained_old_price_active_station_ids"]) > 20 else ""
+            print(f"  old price / active station IDs: {ids}{suffix}")
+        if a["excluded_inactive_station_ids"]:
+            ids = ", ".join(x["station_id"] for x in a["excluded_inactive_station_ids"][:20])
+            suffix = " ..." if len(a["excluded_inactive_station_ids"]) > 20 else ""
+            print(f"  inactive station IDs: {ids}{suffix}")
+        if a["excluded_active_rupture_ids"]:
+            ids = ", ".join(x["station_id"] for x in a["excluded_active_rupture_ids"][:20])
+            suffix = " ..." if len(a["excluded_active_rupture_ids"]) > 20 else ""
+            print(f"  active rupture IDs: {ids}{suffix}")
         if a["excluded_invalid_ids"]:
             ids = ", ".join(x["station_id"] for x in a["excluded_invalid_ids"])
             print(f"  invalid latest IDs: {ids}")
-        if a["excluded_stale_ids"]:
-            ids = ", ".join(x["station_id"] for x in a["excluded_stale_ids"][:20])
-            suffix = " ..." if len(a["excluded_stale_ids"]) > 20 else ""
-            print(f"  stale IDs: {ids}{suffix}")
 
 
 def main():
