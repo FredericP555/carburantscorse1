@@ -24,8 +24,8 @@ scripts/                            Génération, détection et contrôles
 - **Carburants** : Gazole et SP95.
 - **Prix affichés** : TTC pour le graphe de prix ; HT pour l'écart Corse–continent afin de neutraliser la différence de TVA (13 % en Corse, 20 % sur le continent).
 - **Stations autoroutières** : exclues.
-- **Prix journalier** : dernier prix déclaré par station pour la journée, puis forward-fill limité à **45 jours**. Ce seuil est celui du dashboard Corse-vs-régions publié ; le projet méthodologique Corse-vs-BdR retrouvé en juin 2026 utilisait des seuils territoriaux différents et n'est pas substitué silencieusement à cette série.
-- **Prix suspects** : à partir de l'automatisation prospective, toute déclaration < **1,10 €/L** ou > **3,00 €/L** est considérée non fiable et exclut temporairement la station des moyennes jusqu'à une nouvelle déclaration valide. Aucun prix n'est corrigé automatiquement.
+- **Prix journalier** : dernier prix déclaré par station pour la journée. Le seuil de **45 jours** porte désormais sur l'**activité de la station**, définie par une déclaration Gazole/SP95 ou un événement de rupture. Tant que la station reste active, le dernier prix valide de chaque carburant reste utilisable même si ce carburant lui-même n'a pas changé depuis plus de 45 jours. Une rupture active du carburant l'exclut jusqu'à sa fin.
+- **Prix suspects** : à partir de l'automatisation prospective, toute déclaration < **1,10 €/L** ou > **3,00 €/L** est considérée non fiable et exclut temporairement le carburant de la station des moyennes jusqu'à une nouvelle déclaration valide. Aucun prix n'est corrigé automatiquement.
 - **Agrégations** : les séries hebdomadaires et mensuelles sont calculées à partir du journalier.
 - **Historique publié** : les valeurs déjà publiées jusqu'au 28 mai 2026 sont figées, y compris le traitement historique des **six relevés aberrants corses** documentés dans le projet A4C retrouvé. L'automatisation est ensuite **append-only** : elle ajoute de nouveaux jours sans réécrire rétroactivement les courbes publiques si le stock officiel est corrigé ultérieurement.
 
@@ -33,23 +33,26 @@ Des contrôles automatiques bloquent la publication en cas de rupture structurel
 
 ## Audit hebdomadaire des stations corses
 
-Avant toute publication, `scripts/station_audit.py` reconstruit l'état de chaque **série station-carburant** corse à la date du dernier jour disponible. Une même station physique peut donc apparaître dans l'audit Gazole et dans l'audit SP95.
+Avant toute publication, `scripts/station_audit.py` reconstruit l'état de chaque **série station-carburant** corse à la date du dernier jour disponible et distingue l'ancienneté du prix de l'activité de la station.
 
 Après exclusion en amont des stations `pop=A`, chaque série est classée dans une seule catégorie :
 
-- **retenue** : dernier prix valide âgé d'au plus 45 jours ;
-- **trop ancienne** : dernière déclaration âgée de plus de 45 jours ;
-- **dernier prix invalide** : dernière déclaration récente mais hors de la plage 1,10–3,00 €/L ; la station reste exclue jusqu'à une déclaration valide ultérieure ;
+- **retenue** : dernier prix valide, station encore active et aucune rupture active du carburant ;
+- **station inactive** : aucune déclaration Gazole/SP95 ni événement de rupture depuis plus de 45 jours ;
+- **rupture active** : le carburant est déclaré en rupture à la fin du jour considéré ;
+- **dernier prix invalide** : dernière déclaration hors de la plage 1,10–3,00 €/L ; le carburant reste exclu jusqu'à une déclaration valide ultérieure ;
 - **sans état antérieur exploitable** : cas de sécurité prévu par le code, qui doit normalement rester à zéro.
 
-Les comptes doivent se réconcilier exactement : `connues = retenues + trop anciennes + invalides + sans état`. Les identifiants des séries exclues, la date de leur dernière déclaration et son ancienneté sont conservés dans `data.json > meta > station_audit` et apparaissent dans le résumé GitHub Actions.
+L'audit conserve en plus la liste des cas **« prix ancien / station active »** : le prix du carburant a plus de 45 jours mais reste retenu parce que la station continue à déclarer un autre état récent. Cette catégorie permet notamment de surveiller les SP95 durablement inchangés au plafond commercial.
 
-Premier audit vérifié au **17 août 2026** :
+Les comptes doivent se réconcilier exactement : `connues = retenues + stations inactives + ruptures actives + invalides + sans état`. Les identifiants, dates de dernier prix et dates de dernière activité sont conservés dans `data.json > meta > station_audit` et apparaissent dans le résumé GitHub Actions.
+
+Premier audit vérifié avec l'ancienne règle au **17 août 2026** :
 
 - Gazole : **125** séries connues dans les stocks N-1/N, **123** ayant déclaré en 2026, **121 retenues**, **4 trop anciennes**, **0 dernier prix invalide** ;
 - SP95 : **125** séries connues, **123** ayant déclaré en 2026, **106 retenues**, **19 trop anciennes**, **0 dernier prix invalide**.
 
-Une série « trop ancienne » n'est pas qualifiée automatiquement de station fermée : elle est simplement exclue de la moyenne tant qu'aucune nouvelle déclaration récente n'est disponible.
+Le contrôle effectué le **20 août 2026** sur le stock officiel arrêté au 19 août a montré que la règle par ancienneté propre au carburant écartait **15 SP95 de stations pourtant actives**, dont **12 TotalEnergies**. Avec la règle d'activité de station, **121 SP95** sont retenus au 19 août, contre 106 avec l'ancienne règle.
 
 La publication est bloquée si :
 
@@ -59,7 +62,7 @@ La publication est bloquée si :
 - le décompte ne se réconcilie pas ;
 - le nombre retenu ne correspond pas au calcul indépendant du détecteur de bouclier (`stations Total + stations non-Total`).
 
-Tant qu'aucun audit précédent n'est encore stocké dans `data.json`, la population vérifiée du 17 août 2026 (**121 Gazole / 106 SP95**) sert de référence de démarrage pour le garde-fou de baisse de 20 %.
+Tant qu'aucun audit précédent compatible n'est encore stocké dans `data.json`, la population vérifiée du 17 août 2026 (**121 Gazole / 106 SP95**) reste un garde-fou historique de baisse ; une hausse liée au changement de méthode n'est pas bloquée.
 
 ## Référentiel TotalEnergies
 
@@ -69,18 +72,18 @@ Le fichier Open Data ne fournit pas l'enseigne. Le référentiel récupéré dan
 
 Le graphique distingue le plafond commercial annoncé de son **effet économique observable**.
 
-Les anciennes zones jaunes déjà publiées restent figées. Les fichiers de travail retrouvés montrent qu'elles ne peuvent pas être reproduites fidèlement par un seul seuil mécanique ; elles ne sont donc pas réécrites a posteriori.
+Les périodes jusqu'au 31 décembre 2025 ont été recalculées puis figées pour assurer la reproductibilité historique. À partir de 2026, la même règle est recalculée dynamiquement depuis le stock annuel officiel.
 
-À partir du **29 mai 2026**, une nouvelle zone n'est ajoutée que si deux signaux indépendants sont réunis :
+Un jour est considéré comme brut « bouclier effectif » lorsque les deux conditions suivantes sont réunies :
 
-- au moins **20 %** des stations TotalEnergies actives sont à moins de **1,5 c€/L** du plafond ;
-- le **75e percentile des stations corses non-Total** est au niveau ou au-dessus du plafond, ce qui indique que le reste du marché exerce effectivement une pression compatible avec un plafond contraignant.
+- au moins **une station TotalEnergies active** est effectivement au plafond, avec une tolérance de **0,2 c€/L sous le plafond à 0,1 c€/L au-dessus** ;
+- le **75e percentile des stations corses non-Total** est au niveau ou au-dessus du plafond, ce qui indique une pression de marché compatible avec un plafond réellement contraignant.
 
-Pour éviter le clignotement quotidien, les interruptions de 4 jours ou moins peuvent être comblées et les épisodes isolés de moins de 5 jours sont écartés.
+Les stations utilisées par ce détecteur suivent exactement la même règle d'activité que la moyenne du dashboard : activité de station sur 45 jours, maintien possible d'un prix inchangé plus ancien, exclusion d'un dernier prix invalide et exclusion pendant une rupture active.
 
-Cette règle prospective évite de confondre deux situations : « beaucoup de Total affichent encore 1,99 € » et « 1,99 € limite réellement leurs prix alors que le marché autour pousserait plus haut ».
+Une période n'est confirmée qu'après **2 jours bruts consécutifs**, avec effet rétroactif au premier jour. Une seule journée inactive peut ensuite être comblée entre deux portions confirmées. Deux jours isolés séparés par une journée inactive ne peuvent donc pas créer artificiellement une période.
 
-Les montants des plafonds restent une configuration explicite dans `scripts/bouclier_detector.py`. La chronologie formelle retenue est celle de la dernière version de `app.js` fournie pour `carburantscorse1`. Le projet Corse-vs-BdR sauvegardé le 14 juin 2026 comporte des dates de transition légèrement différentes ; cette divergence est documentée et n'est pas utilisée pour modifier rétroactivement les zones historiques.
+Les montants des plafonds restent une configuration explicite dans `scripts/bouclier_detector.py`. Le calendrier éditorial historique « pendant/hors action TotalEnergies » reste distinct du dessin des zones de bouclier effectif.
 
 ## Fenêtre temporelle
 
