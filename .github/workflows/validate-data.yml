@@ -37,6 +37,9 @@ jobs:
       - name: Verify unified bouclier rule
         run: python scripts/test_bouclier_rule.py
 
+      - name: Verify station activity carry-forward policy
+        run: python tests/test_station_activity_policy.py
+
       - name: Verify recovered historical editorial method
         run: python scripts/validate_editorial_history.py
 
