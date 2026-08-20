@@ -12,22 +12,40 @@ assert meta.get('editorial_action_rule')=='union-of-gazole-and-sp95-total-interv
 station_audit=meta.get('station_audit')
 assert station_audit, 'missing meta.station_audit'
 assert station_audit.get('as_of')==meta['last_date'], 'station audit date differs from candidate cutoff'
-assert station_audit.get('max_ffill_days')==45, 'unexpected station audit freshness window'
+assert station_audit.get('station_activity_policy') is True, 'station activity policy not enabled'
+assert station_audit.get('max_station_inactive_days')==45, 'unexpected station inactivity window'
+assert station_audit.get('max_ffill_days')==45, 'backward-compatible 45-day alias missing'
 for fuel in ('Gazole','SP95'):
     a=station_audit['fuels'][fuel]
     known=a['known_station_fuel_series']
-    reconciled=(a['retained']+a['excluded_stale']+a['excluded_invalid_latest']+a['excluded_no_prior'])
+    reconciled=(
+        a['retained']
+        + a['excluded_inactive_station']
+        + a['excluded_active_rupture']
+        + a['excluded_invalid_latest']
+        + a['excluded_no_prior']
+    )
     assert known==reconciled, f'station audit does not reconcile for {fuel}: {known}!={reconciled}'
     assert a['declared_current_year']<=known
     assert a['retained']>0
-    stale_ids=a.get('excluded_stale_ids') or []
+    assert a['excluded_stale']==a['excluded_inactive_station']
+
+    old_price_ids=a.get('retained_old_price_active_station_ids') or []
+    inactive_ids=a.get('excluded_inactive_station_ids') or []
+    rupture_ids=a.get('excluded_active_rupture_ids') or []
     invalid_ids=a.get('excluded_invalid_ids') or []
     no_prior_ids=a.get('excluded_no_prior_ids') or []
-    assert len(stale_ids)==a['excluded_stale']
+
+    assert len(old_price_ids)==a['retained_old_price_active_station']
+    assert len(inactive_ids)==a['excluded_inactive_station']
+    assert len(rupture_ids)==a['excluded_active_rupture']
     assert len(invalid_ids)==a['excluded_invalid_latest']
     assert len(no_prior_ids)==a['excluded_no_prior']
-    ids=[x['station_id'] for x in stale_ids+invalid_ids+no_prior_ids]
-    assert len(ids)==len(set(ids)), f'duplicate station exclusion reason for {fuel}'
+
+    excluded_ids=[x['station_id'] for x in inactive_ids+rupture_ids+invalid_ids+no_prior_ids]
+    assert len(excluded_ids)==len(set(excluded_ids)), f'duplicate station exclusion reason for {fuel}'
+    retained_old_ids=[x['station_id'] for x in old_price_ids]
+    assert not (set(excluded_ids) & set(retained_old_ids)), f'old-price retained station also excluded for {fuel}'
 
 editorial_ranges=None
 for fuel in ('Gazole','SP95'):
@@ -42,14 +60,11 @@ for fuel in ('Gazole','SP95'):
     assert e['outside_total_action_days'] > 0
     assert isinstance(e['total_action_ranges_used'],list) and e['total_action_ranges_used']
 
-    # "Hors toute action TotalEnergies" uses one common calendar for both fuel analyses:
-    # the union of Gazole + SP95 intervention periods.
     if editorial_ranges is None:
         editorial_ranges=e['total_action_ranges_used']
     else:
         assert e['total_action_ranges_used']==editorial_ranges, 'fuel-specific editorial action calendars diverged'
 
-    # Registry/data coverage guardrails.
     nt=b.get('latest_total_stations')
     nn=b.get('latest_non_total_stations')
     min_total={'Gazole':35,'SP95':25}[fuel]
@@ -59,21 +74,20 @@ for fuel in ('Gazole','SP95'):
     assert 0 <= b.get('latest_at_cap_share',0) <= 1
     assert b.get('latest_at_cap_count') is not None and b['latest_at_cap_count'] >= 0
 
-    # Both observatories must use the one published effective-ceiling rule from c1.
     rule=b['rule']
     assert rule['min_total_at_cap_count']==1
     assert abs(rule['cap_tolerance_below_cents']-0.2) < 1e-9
     assert abs(rule['cap_tolerance_above_cents']-0.1) < 1e-9
     assert rule['market_reference']=='75e percentile des stations corses non-Total'
     assert rule['market_pressure_threshold']=='>= plafond'
+    assert rule['station_activity_days']==45
+    assert rule['fuel_price_may_outlive_activity_window'] is True
+    assert rule['active_rupture_excluded'] is True
     assert rule['confirmation_days']==2
     assert rule['confirmation_retroactive_to_first_day'] is True
     assert rule['fill_gap_days']==1
     assert rule['historical_ranges_recomputed_through']=='2025-12-31'
 
-    # Independent population reconciliation: station_audit classifies all latest Corsica
-    # station-fuel states, while bouclier_detector independently splits the retained population
-    # into TotalEnergies and non-Total. They must describe exactly the same retained stations.
     audited_retained=station_audit['fuels'][fuel]['retained']
     assert nt+nn==audited_retained, (
         f'population mismatch for {fuel}: audit retained={audited_retained}, '
