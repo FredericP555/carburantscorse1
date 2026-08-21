@@ -4,6 +4,9 @@
 This runs inside the carburantscorse1 workflow after its own generator has populated
 .cache/official-fuel. It therefore reuses the same annual ZIPs and never applies c1's
 45-day forward-fill or regional aggregation rules to the shared snapshot.
+
+The shared metadata also points to the single UFIP Rotterdam Gazole download owned by C1
+and carries the canonical prepared Corsica calibration consumed later by C2.
 """
 from __future__ import annotations
 
@@ -21,6 +24,7 @@ import xml.etree.ElementTree as ET
 
 import update_data_v2 as core
 import bouclier_detector
+import rotterdam_corse_shared_v2
 
 DEPARTMENTS = {"13", "20"}
 FUELS = {"Gazole", "SP95", "E10"}
@@ -195,6 +199,7 @@ def main() -> None:
         "producer": "FredericP555/carburantscorse1",
         "method": "raw official declarations only; no c1 forward-fill or aggregation",
         "bouclier": bouclier_detector.metadata(max(years)),
+        "rotterdam": rotterdam_corse_shared_v2.shared_metadata(),
     }
     meta_path.write_text(json.dumps(metadata, ensure_ascii=False, indent=2), encoding="utf-8")
 
