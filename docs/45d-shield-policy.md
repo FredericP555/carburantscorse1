@@ -33,7 +33,8 @@ Quand Gazole et SP95 sont tous deux au plafond, la vivacité croisée entre eux 
 
 - Rotterdam Gazole **>= R2 Corse** : les vieux prix Gazole/SP95 peuvent rester admissibles, sous réserve des autres garde-fous ;
 - Rotterdam Gazole **< R2 Corse** : les vieux prix Gazole/SP95 sont exclus de la moyenne ;
-- ce verdict ne change jamais le statut « bouclier effectif ».
+- après un premier passage sous R2 intervenu après l'expiration normale du carburant cible, ce vieux prix reste exclu même si Rotterdam remonte ensuite ; il ne redevient admissible qu'après une **nouvelle déclaration de ce carburant cible**, qui crée un nouveau J0 ;
+- ce mécanisme ne change jamais le statut « bouclier effectif ».
 
 Calibration candidate 2026 : `k_corse ≈ 0,733`, donc `R2 = k × R1`, avec R1 calculé sur les trois dernières cotations réellement observées avant le 8 avril 2026.
 
