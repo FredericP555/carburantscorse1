@@ -13,8 +13,17 @@ from __future__ import annotations
 
 import json
 import statistics
+import sys
 from datetime import date, timedelta
 from pathlib import Path
+
+# When this file is executed directly (``python scripts/validate_editorial_history.py``),
+# Python puts ``scripts/`` rather than the repository root on sys.path.  The detector now
+# imports shared helpers from ``a4c_common/``, so make the repository root explicit before
+# importing it.  This changes only import resolution; the historical calculation is untouched.
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
 import bouclier_detector as bd
 
