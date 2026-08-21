@@ -49,11 +49,9 @@ jobs:
           print('Run selected:',run)
           PY
 
-      - name: Checkout main
+      - name: Checkout selected ref
         if: steps.clock.outputs.run == 'true'
         uses: actions/checkout@v4
-        with:
-          ref: main
 
       - name: Set up Python
         if: steps.clock.outputs.run == 'true'
@@ -74,12 +72,16 @@ jobs:
         if: steps.clock.outputs.run == 'true'
         run: python scripts/update_data_append.py --input data.json --output data-candidate.json
 
-      - name: Build shared 13/20 official snapshot
+      - name: Fetch UFIP Rotterdam Gazole once for C1 and C2
+        if: steps.clock.outputs.run == 'true'
+        run: python scripts/fetch_ufip.py --output-dir outputs/ufip
+
+      - name: Build shared 13/20 official snapshot and Rotterdam metadata
         if: steps.clock.outputs.run == 'true'
         run: python scripts/export_shared_c2_snapshot.py
 
       - name: Publish shared snapshot release
-        if: steps.clock.outputs.run == 'true'
+        if: steps.clock.outputs.run == 'true' && github.ref_name == github.event.repository.default_branch
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -88,10 +90,12 @@ jobs:
           gh release create "$tag" \
             outputs/shared/official_13_20.csv.gz \
             outputs/shared/official_13_20.meta.json \
+            outputs/ufip/rotterdam_gazole_observed.csv \
+            outputs/ufip/rotterdam_gazole_daily.csv \
             --repo "$GITHUB_REPOSITORY" \
             --target "$GITHUB_SHA" \
             --title "$title" \
-            --notes "Snapshot normalisé 13/20 pour les observatoires A4C. Déclarations officielles brutes uniquement, sans règle métier propre à c1 ou c2." \
+            --notes "Snapshot normalisé 13/20 et série UFIP Rotterdam Gazole partagée pour les observatoires A4C. Un seul téléchargement UFIP est effectué en amont par C1." \
             --latest=false
 
           gh release list --repo "$GITHUB_REPOSITORY" --limit 100 --json tagName,createdAt \
@@ -152,17 +156,17 @@ jobs:
         run: mv data-candidate.json data.json
 
       - name: Commit updated data and station registry
-        if: steps.clock.outputs.run == 'true' && steps.changed.outputs.changed == 'true'
+        if: steps.clock.outputs.run == 'true' && steps.changed.outputs.changed == 'true' && github.ref_name == github.event.repository.default_branch
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add data.json config/corse_station_brands.json
           git diff --cached --quiet && exit 0
           git commit -m "Update fuel data $(date -u +%Y-%m-%d)"
-          git push origin main
+          git push origin "HEAD:${GITHUB_REF_NAME}"
 
       - name: Rebuild GitHub Pages
-        if: steps.clock.outputs.run == 'true' && steps.changed.outputs.changed == 'true'
+        if: steps.clock.outputs.run == 'true' && steps.changed.outputs.changed == 'true' && github.ref_name == github.event.repository.default_branch
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
