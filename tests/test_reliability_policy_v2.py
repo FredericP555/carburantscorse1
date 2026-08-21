@@ -39,7 +39,7 @@ class T(unittest.TestCase):
     def test_corse_single_cap_cross_liveness_renews_45_days(self):
         d = self.ev(**self.shield_args(activity_by_fuel={'Gazole': datetime(2026, 8, 10)}))
         self.assertTrue(d.eligible)
-        self.assertEqual(d.reason, 'bouclier_vivacite_croisee_45j')
+        self.assertEqual(d.reason, 'bouclier_vivacite_45j_renouvelee')
 
     def test_corse_single_cap_cross_liveness_expires_after_45_days(self):
         d = self.ev(**self.shield_args(activity_by_fuel={'Gazole': datetime(2026, 7, 5)}))
@@ -50,6 +50,25 @@ class T(unittest.TestCase):
             region_kind='mainland',
             last_declared_at=datetime(2026, 6, 20),
             activity_by_fuel={'E10': datetime(2026, 8, 18)},
+        )
+        self.assertTrue(d.eligible)
+        self.assertEqual(d.reason, 'continent_vivacite_bornee')
+
+    def test_bdr_in_c1_uses_same_generic_mainland_rule(self):
+        # C1 has no BDR-specific reliability path: Bouches-du-Rhone are one of
+        # the ordinary non-Corsica regions represented by region_kind='mainland'.
+        d = self.ev(
+            region_kind='mainland',
+            last_declared_at=datetime(2026, 6, 20),
+            activity_by_fuel={'E10': datetime(2026, 8, 18)},
+            is_total=True,
+            shield_effective=True,
+            applicable_cap=1.99,
+            gazole_price=2.25,
+            gazole_cap=2.25,
+            sp95_price=1.99,
+            sp95_cap=1.99,
+            rotterdam_stale_price_admissible=False,
         )
         self.assertTrue(d.eligible)
         self.assertEqual(d.reason, 'continent_vivacite_bornee')
