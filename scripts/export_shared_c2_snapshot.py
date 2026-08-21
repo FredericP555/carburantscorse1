@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """Export the official 13/20 observations consumed by carburantscorse2.
 
-This runs inside the carburantscorse1 workflow after its own generator has populated
-.cache/official-fuel. It therefore reuses the same annual ZIPs and never applies c1's
-45-day forward-fill or regional aggregation rules to the shared snapshot.
+This runs inside the carburantscorse1 workflow and exports raw official declarations only;
+it never applies c1's forward-fill or aggregation rules to the shared snapshot.
 
-The shared metadata also points to the single UFIP Rotterdam Gazole download owned by C1
-and carries the canonical prepared Corsica calibration consumed later by C2.
+The same manifest binds together the official snapshot, the single UFIP Rotterdam Gazole
+download owned by C1, the canonical prepared Corsica calibration and the canonical Corsica
+station-brand registry. C2 can therefore pin one C1 release and consume a coherent set.
 """
 from __future__ import annotations
 
@@ -31,6 +31,9 @@ FUELS = {"Gazole", "SP95", "E10"}
 PRICE_MIN = 1.10
 PRICE_MAX = 3.00
 SCHEMA = "a4c-official-13-20-v1"
+BRAND_REGISTRY_SCHEMA = "a4c-corsica-station-brands-v2"
+BRAND_REGISTRY_PATH = Path("config/corse_station_brands.json")
+BRAND_REGISTRY_ASSET = "corse_station_brands.json"
 FIELDS = [
     "source_year", "station_id", "department", "cp", "city", "address", "pop",
     "is_motorway", "latitude", "longitude", "fuel_id", "fuel", "timestamp", "date",
@@ -138,6 +141,25 @@ def default_years(day: date | None = None) -> list[int]:
     return [day.year - 1, day.year]
 
 
+def brand_registry_metadata(path: Path = BRAND_REGISTRY_PATH) -> dict:
+    if not path.exists():
+        raise FileNotFoundError(f"Canonical Corsica brand registry missing: {path}")
+    raw = path.read_bytes()
+    payload = json.loads(raw.decode("utf-8"))
+    if payload.get("schema") != BRAND_REGISTRY_SCHEMA:
+        raise RuntimeError(f"Unexpected Corsica brand registry schema: {payload.get('schema')!r}")
+    stations = payload.get("stations")
+    if not isinstance(stations, dict) or not stations:
+        raise RuntimeError("Canonical Corsica brand registry contains no stations")
+    return {
+        "asset": BRAND_REGISTRY_ASSET,
+        "schema": BRAND_REGISTRY_SCHEMA,
+        "sha256": hashlib.sha256(raw).hexdigest(),
+        "station_count": len(stations),
+        "generated_at": payload.get("generated_at"),
+    }
+
+
 def main() -> None:
     default_year_arg = ",".join(str(year) for year in default_years())
     parser = argparse.ArgumentParser()
@@ -200,6 +222,7 @@ def main() -> None:
         "method": "raw official declarations only; no c1 forward-fill or aggregation",
         "bouclier": bouclier_detector.metadata(max(years)),
         "rotterdam": rotterdam_corse_shared_v2.shared_metadata(),
+        "corse_station_brands": brand_registry_metadata(),
     }
     meta_path.write_text(json.dumps(metadata, ensure_ascii=False, indent=2), encoding="utf-8")
 
