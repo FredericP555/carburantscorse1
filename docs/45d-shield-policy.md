@@ -9,63 +9,74 @@
 - Une redéclaration au même prix remet le compteur à zéro.
 - Prix non fini, date future, rupture/fermeture ou preuve indépendante d'inactivité : exclusion prioritaire.
 
-## 2. Corse — période de bouclier TotalEnergies effectif
+## 2. Bouclier effectif et fiabilité d'un vieux prix sont deux choses distinctes
 
-Le détecteur de bouclier préparé conserve la règle historique : plafond connu, au moins une TotalEnergies au plafond avec tolérance **-0,2 c/L à +0,1 c/L**, et P75 hors Total au moins égal au plafond ; confirmation sur deux jours consécutifs, avec au plus un jour isolé comblé.
+Le statut **bouclier effectif** reste déterminé uniquement par le détecteur A4C : plafond connu, au moins une TotalEnergies au plafond avec tolérance **-0,2 c/L à +0,1 c/L**, et P75 hors Total au moins égal au plafond ; confirmation sur deux jours consécutifs, avec au plus un jour isolé comblé.
 
-Sur la branche de préparation, le détecteur dynamique est désormais aligné sur la nouvelle méthodologie :
+R2 ne démarre pas et ne termine pas le bouclier. Il intervient seulement ensuite pour décider si un vieux prix de station peut encore entrer dans une moyenne dans le cas du double plafond.
 
-- fraîcheur stricte `age < 45` : J+45 est exclu ;
-- tri-état `TOTAL / NON_TOTAL_CONFIRMED / UNKNOWN` ;
-- un ID `UNKNOWN` n'entre ni dans le groupe Total ni dans le P75 hors Total ;
-- le registre canonique est `config/corse_station_brands.json`.
+Sur la branche de préparation, le détecteur dynamique utilise `age < 45` et le tri-état `TOTAL / NON_TOTAL_CONFIRMED / UNKNOWN`. Un ID `UNKNOWN` n'entre ni dans le groupe Total ni dans le P75 hors Total.
 
-Les périodes historiques 2023-2025 restent figées et ne sont pas recalculées silencieusement.
+## 3. Corse — un seul carburant principal au plafond
 
-Au-delà de 45 jours en Corse, l'exception préparée concerne uniquement **Gazole et SP95** dans une station TotalEnergies, après détection du bouclier avec des données normalement fraîches, si le dernier prix du carburant cible est au plafond applicable et s'il était encore admissible à l'entrée de la phase.
+Au-delà des 45 jours normaux, l'exception concerne uniquement Gazole/SP95 d'une station TotalEnergies pendant un bouclier effectif, si le prix cible est au plafond de sa phase.
 
-La vivacité est recherchée uniquement sur l'autre carburant principal (**Gazole ↔ SP95**). E10 ne peut pas bénéficier d'une exception de vieillissement.
+- Cible SP95 : une nouvelle déclaration Gazole datant de moins de 45 jours prouve la vivacité.
+- Cible Gazole : une nouvelle déclaration SP95 datant de moins de 45 jours prouve la vivacité.
+- Cette déclaration de l'autre carburant crée une **nouvelle fenêtre glissante de 45 jours** pour le vieux prix cible.
+- À défaut de nouvelle déclaration admissible depuis 45 jours, le vieux prix cible sort de la moyenne.
+- E10 ne peut pas servir de vivacité en Corse et ne bénéficie pas lui-même d'une exception de vieillissement.
 
-### Double plafond et Rotterdam
+## 4. Corse — Gazole et SP95 simultanément au plafond
 
-Si Gazole et SP95 sont simultanément au plafond, Rotterdam Gazole peut servir dans le cas particulier du double plafond. Rotterdam n'est jamais utilisé comme indice du marché SP95.
+Quand Gazole et SP95 sont tous deux au plafond, la vivacité croisée entre eux ne suffit plus. Le contrôle devient économique :
 
-Le calibrage Corse candidat 2026 reste : entrée 8 avril 2026 ; R1 = moyenne des trois dernières cotations réellement observées avant l'entrée ; sorties 29 mai, 1er juin et 2 juin ; `k_corse ≈ 0,733`, avec `R2 = k × R1`.
+- Rotterdam Gazole **>= R2 Corse** : les vieux prix Gazole/SP95 peuvent rester admissibles, sous réserve des autres garde-fous ;
+- Rotterdam Gazole **< R2 Corse** : les vieux prix Gazole/SP95 sont exclus de la moyenne ;
+- ce verdict ne change jamais le statut « bouclier effectif ».
 
-**La règle exacte de franchissement de R2 n'est pas définie dans cette préparation.** Le moteur ne fait que consommer un verdict `rotterdam_gazole_constraining`. Aucune convention supplémentaire n'est inventée avant décision méthodologique explicite.
+Calibration candidate 2026 : `k_corse ≈ 0,733`, donc `R2 = k × R1`, avec R1 calculé sur les trois dernières cotations réellement observées avant le 8 avril 2026.
 
-## 3. Source Rotterdam et release commune C1 → C2
+## 5. Phases de plafond et absence de résurrection
+
+Une **phase de plafond** est simplement une portion continue de bouclier effectif pendant laquelle le montant du plafond ne change pas.
+
+Exemple Gazole 2026 : le passage de 2,09 € à 2,25 € le 8 avril crée automatiquement une nouvelle phase.
+
+C1 publie désormais ces phases explicitement dans les métadonnées partagées avec : date de début, date de fin, carburant, plafond et identifiant de phase.
+
+Le garde-fou « aucune résurrection » est calculé automatiquement :
+
+- si la dernière déclaration du carburant était encore âgée de moins de 45 jours au début de la phase, elle peut bénéficier ensuite des exceptions prévues ;
+- si elle était déjà périmée au début de cette phase, le bouclier ne la ressuscite pas ;
+- si le carburant cible est redéclaré pendant la phase, cette nouvelle déclaration est une preuve fraîche et repart normalement de J0.
+
+Il n'existe donc plus de booléen manuel `eligible_at_cap_entry` à faire confiance : le moteur calcule cette admissibilité à partir des dates.
+
+## 6. Source Rotterdam et release commune C1 → C2
 
 La chaîne préparée est **UFIP → C1 → C2**.
 
 - C1 effectue l'unique téléchargement UFIP.
 - C1 produit `rotterdam_gazole_observed.csv` et `rotterdam_gazole_daily.csv`.
 - La fenêtre UFIP conserve les observations de calibration 2026 même après le changement d'année.
-- C1 publie, dans une même release validée : snapshot 13/20, métadonnées, deux CSV Rotterdam et registre Corse canonique.
-- Les SHA-256 du snapshot, des deux CSV Rotterdam et du registre Corse sont inscrits dans le manifeste.
-- La release n'est créée qu'après les validations bloquantes de C1 et, lorsqu'il y a une mise à jour, après le commit validé des données et du registre.
+- C1 publie, dans une même release validée : snapshot 13/20, métadonnées avec phases de plafond, deux CSV Rotterdam et registre Corse canonique.
+- Les SHA-256 sont contrôlables par C2.
 
-## 4. Continent C1 — vivacité bornée après 45 jours
+## 7. Continent C1 — règle distincte
 
-Cette règle est propre au continent dans C1 :
+La règle continentale de C1 reste distincte de la règle BdR de C2 : J+45 à J+89 par vivacité sur un autre carburant, puis arrêt absolu à J+90. Ce garde-fou C1 ne doit pas être transposé aux BdR de C2.
 
-- J0 à J+44 : règle normale ;
-- de **J+45 à J+89 inclus**, un vieux prix Gazole/SP95 peut rester admissible uniquement si la même station a déclaré un autre carburant depuis moins de 45 jours ;
-- la déclaration de vivacité ne remet pas à zéro l'âge du prix cible ;
-- à **J+90**, le prix cible est exclu quoi qu'il arrive.
+## 8. Garde-fous prioritaires
 
-Ce plafond de 90 jours est un garde-fou propre à cette règle C1 continentale. Il ne doit pas être transposé automatiquement à C2.
-
-## 5. Garde-fous prioritaires
-
-Même lorsqu'une exception serait autrement applicable :
+Dans tous les cas :
 
 - rupture active → exclusion ;
 - fermeture / preuve indépendante d'inactivité → exclusion ;
 - prix absent, non fini ou invalide → exclusion ;
 - date de déclaration future → exclusion ;
-- en Corse sous bouclier, prix déjà périmé à l'entrée de la phase → aucune résurrection ;
-- changement de plafond → nouvelle phase et nouvelle vérification de l'admissibilité à l'entrée.
+- prix déjà périmé lors de l'entrée dans la phase de plafond → aucune résurrection ;
+- changement de plafond → nouvelle phase et nouvelle vérification automatique.
 
 ## Procédure après lundi
 
@@ -74,5 +85,4 @@ Même lorsqu'une exception serait autrement applicable :
 3. Tester la politique préparée uniquement en candidat.
 4. Produire `ACTUEL`, `NOUVELLE_REGLE_PROSPECTIVE` et `NOUVELLE_REGLE_RETROACTIVE`.
 5. Mesurer les différences avant toute activation.
-6. Définir séparément, puis coder et tester, la règle exacte liée au franchissement de R2.
-7. Décider ensuite explicitement de toute migration ou réécriture historique.
+6. Décider ensuite explicitement de toute migration ou réécriture historique.
