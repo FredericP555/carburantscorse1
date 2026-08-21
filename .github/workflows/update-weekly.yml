@@ -146,6 +146,10 @@ jobs:
         if: steps.clock.outputs.run == 'true'
         run: python scripts/export_shared_c2_snapshot.py
 
+      - name: Validate complete C1 to C2 release contract
+        if: steps.clock.outputs.run == 'true'
+        run: python scripts/validate_shared_c2_snapshot.py
+
       - name: Publish validated shared C1 release
         if: steps.clock.outputs.run == 'true' && github.ref_name == github.event.repository.default_branch
         env:
