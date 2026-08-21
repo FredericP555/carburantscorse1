@@ -9,7 +9,7 @@ import rotterdam_corse_shared_v2 as r
 
 
 class RotterdamCorseSharedT(unittest.TestCase):
-    def files(self):
+    def files(self, daily_value=0.769):
         observed = tempfile.NamedTemporaryFile('w', encoding='utf-8', newline='', delete=False, suffix='.csv')
         observed.write('date,rotterdam_eur_l\n')
         for d, v in [
@@ -19,7 +19,8 @@ class RotterdamCorseSharedT(unittest.TestCase):
             observed.write(f'{d},{v}\n')
         observed.close()
         daily = tempfile.NamedTemporaryFile('w', encoding='utf-8', newline='', delete=False, suffix='.csv')
-        daily.write('date,rotterdam_eur_l,rotterdam_observed,rotterdam_carried\n2026-04-03,1.037,True,False\n')
+        daily.write('date,rotterdam_eur_l,rotterdam_observed,rotterdam_carried\n')
+        daily.write(f'2026-08-19,{daily_value},True,False\n')
         daily.close()
         self.addCleanup(lambda: Path(observed.name).unlink(missing_ok=True))
         self.addCleanup(lambda: Path(daily.name).unlink(missing_ok=True))
@@ -40,6 +41,18 @@ class RotterdamCorseSharedT(unittest.TestCase):
         self.assertEqual(len(meta['observed_sha256']), 64)
         self.assertEqual(len(meta['daily_sha256']), 64)
         self.assertEqual(meta['corsica_calibration']['territory'], 'corsica')
+        self.assertIn('R2 does not define shield effectiveness', meta['runtime_rule'])
+
+    def test_runtime_r2_comparator(self):
+        observed, daily = self.files(0.769)
+        self.assertTrue(r.constraining_on(date(2026, 8, 19), observed_file=observed, daily_file=daily))
+        observed2, daily2 = self.files(0.760)
+        self.assertFalse(r.constraining_on(date(2026, 8, 19), observed_file=observed2, daily_file=daily2))
+
+    def test_missing_daily_value_fails_closed(self):
+        observed, daily = self.files()
+        with self.assertRaises(ValueError):
+            r.constraining_on(date(2026, 8, 20), observed_file=observed, daily_file=daily)
 
 
 if __name__ == '__main__':
