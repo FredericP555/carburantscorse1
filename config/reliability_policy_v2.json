@@ -3,16 +3,23 @@
   "normal_age_days": 45,
   "cap_tolerance_below_eur": 0.002,
   "cap_tolerance_above_eur": 0.001,
-  "corsica_single_cap_liveness": {
-    "mode": "other_principal_fuel",
-    "liveness_max_age_days": 45,
-    "effect": "starts_a_new_rolling_45_day_support_window"
+  "corsica_rule": {
+    "must_match_c2_corsica": true,
+    "single_cap_liveness": {
+      "mode": "other_principal_fuel",
+      "liveness_max_age_days": 45,
+      "effect": "starts_a_new_rolling_45_day_support_window"
+    },
+    "double_cap_uses_rotterdam_r2": true
   },
   "mainland_liveness": {
     "mode": "any_other_declared_fuel",
     "liveness_max_age_days": 45,
     "absolute_target_max_age_days": 90,
-    "scope_note": "C1 mainland fallback only; not the C2 BDR rule"
+    "scope": "all_non_corsica_regions_uniformly",
+    "includes_bouches_du_rhone": true,
+    "bdr_specific_branch_in_c1": false,
+    "scope_note": "In C1, Bouches-du-Rhone are treated exactly like every other non-Corsica region. C2 has its own separate BDR methodology."
   },
   "double_cap": {
     "enabled": true,
