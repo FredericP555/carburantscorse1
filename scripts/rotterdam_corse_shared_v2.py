@@ -8,6 +8,7 @@ same result instead of recalculating it independently.
 from __future__ import annotations
 
 import csv
+import hashlib
 from datetime import date
 from pathlib import Path
 from statistics import mean
@@ -72,6 +73,10 @@ def calibration_2026(path: str | Path = OBSERVED_FILE) -> dict:
     }
 
 
+def _sha256(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
 def shared_metadata(
     observed_file: str | Path = OBSERVED_FILE,
     daily_file: str | Path = DAILY_FILE,
@@ -85,7 +90,9 @@ def shared_metadata(
         "download_owner": "FredericP555/carburantscorse1",
         "single_download": True,
         "observed_asset": observed_path.name,
+        "observed_sha256": _sha256(observed_path),
         "daily_asset": daily_path.name,
+        "daily_sha256": _sha256(daily_path),
         "value_column": VALUE_COLUMN,
         "corsica_calibration": calibration_2026(observed_path),
     }
