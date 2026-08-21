@@ -64,6 +64,10 @@ jobs:
         if: steps.clock.outputs.run == 'true'
         run: pip install -r requirements.txt
 
+      - name: Unit tests
+        if: steps.clock.outputs.run == 'true'
+        run: python -m unittest discover -s tests -v
+
       - name: Verify recovered historical editorial method
         if: steps.clock.outputs.run == 'true'
         run: python scripts/validate_editorial_history.py
@@ -75,36 +79,6 @@ jobs:
       - name: Fetch UFIP Rotterdam Gazole once for C1 and C2
         if: steps.clock.outputs.run == 'true'
         run: python scripts/fetch_ufip.py --output-dir outputs/ufip
-
-      - name: Build shared 13/20 official snapshot and Rotterdam metadata
-        if: steps.clock.outputs.run == 'true'
-        run: python scripts/export_shared_c2_snapshot.py
-
-      - name: Publish shared snapshot release
-        if: steps.clock.outputs.run == 'true' && github.ref_name == github.event.repository.default_branch
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          tag="a4c-shared-$(date -u +%Y%m%dT%H%M%SZ)-${GITHUB_RUN_ID}"
-          title="A4C shared official snapshot $(date -u +%Y-%m-%d)"
-          gh release create "$tag" \
-            outputs/shared/official_13_20.csv.gz \
-            outputs/shared/official_13_20.meta.json \
-            outputs/ufip/rotterdam_gazole_observed.csv \
-            outputs/ufip/rotterdam_gazole_daily.csv \
-            --repo "$GITHUB_REPOSITORY" \
-            --target "$GITHUB_SHA" \
-            --title "$title" \
-            --notes "Snapshot normalisé 13/20 et série UFIP Rotterdam Gazole partagée pour les observatoires A4C. Un seul téléchargement UFIP est effectué en amont par C1." \
-            --latest=false
-
-          gh release list --repo "$GITHUB_REPOSITORY" --limit 100 --json tagName,createdAt \
-            --jq '[.[] | select(.tagName | startswith("a4c-shared-"))] | sort_by(.createdAt) | reverse | .[8:] | .[].tagName' \
-            | while read -r old_tag; do
-                [ -z "$old_tag" ] && continue
-                gh release delete "$old_tag" --repo "$GITHUB_REPOSITORY" --cleanup-tag -y || \
-                  echo "Cleanup skipped for $old_tag"
-              done
 
       - name: Detect whether official data advanced
         if: steps.clock.outputs.run == 'true'
@@ -164,6 +138,41 @@ jobs:
           git diff --cached --quiet && exit 0
           git commit -m "Update fuel data $(date -u +%Y-%m-%d)"
           git push origin "HEAD:${GITHUB_REF_NAME}"
+
+      # Build the shared package only after every blocking C1 validation and, when
+      # applicable, after the validated data/registry commit. A published release therefore
+      # means "validated C1 cycle", never merely "files were generated".
+      - name: Build validated shared 13/20 snapshot and C1 metadata
+        if: steps.clock.outputs.run == 'true'
+        run: python scripts/export_shared_c2_snapshot.py
+
+      - name: Publish validated shared C1 release
+        if: steps.clock.outputs.run == 'true' && github.ref_name == github.event.repository.default_branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="a4c-shared-$(date -u +%Y%m%dT%H%M%SZ)-${GITHUB_RUN_ID}"
+          title="A4C shared official snapshot $(date -u +%Y-%m-%d)"
+          target="$(git rev-parse HEAD)"
+          gh release create "$tag" \
+            outputs/shared/official_13_20.csv.gz \
+            outputs/shared/official_13_20.meta.json \
+            outputs/ufip/rotterdam_gazole_observed.csv \
+            outputs/ufip/rotterdam_gazole_daily.csv \
+            config/corse_station_brands.json \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$target" \
+            --title "$title" \
+            --notes "Cycle C1 validé : snapshot normalisé 13/20, série UFIP Rotterdam Gazole partagée et registre Corse canonique. Un seul téléchargement UFIP est effectué en amont par C1." \
+            --latest=false
+
+          gh release list --repo "$GITHUB_REPOSITORY" --limit 100 --json tagName,createdAt \
+            --jq '[.[] | select(.tagName | startswith("a4c-shared-"))] | sort_by(.createdAt) | reverse | .[8:] | .[].tagName' \
+            | while read -r old_tag; do
+                [ -z "$old_tag" ] && continue
+                gh release delete "$old_tag" --repo "$GITHUB_REPOSITORY" --cleanup-tag -y || \
+                  echo "Cleanup skipped for $old_tag"
+              done
 
       - name: Rebuild GitHub Pages
         if: steps.clock.outputs.run == 'true' && steps.changed.outputs.changed == 'true' && github.ref_name == github.event.repository.default_branch
