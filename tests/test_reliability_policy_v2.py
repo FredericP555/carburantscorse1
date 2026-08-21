@@ -36,6 +36,14 @@ class T(unittest.TestCase):
         self.assertTrue(self.ev(last_declared_at=datetime(2026, 7, 6)).eligible)
         self.assertFalse(self.ev(last_declared_at=datetime(2026, 7, 5)).eligible)
 
+    def test_cap_tolerance_exact_millieuro_boundaries(self):
+        self.assertTrue(p.at_cap(1.988, 1.99))
+        self.assertTrue(p.at_cap(1.991, 1.99))
+        self.assertFalse(p.at_cap(1.987, 1.99))
+        self.assertFalse(p.at_cap(1.992, 1.99))
+        self.assertTrue(p.at_cap(2.091, 2.09))
+        self.assertTrue(p.at_cap(2.251, 2.25))
+
     def test_corse_single_cap_cross_liveness_renews_45_days(self):
         d = self.ev(**self.shield_args(activity_by_fuel={'Gazole': datetime(2026, 8, 10)}))
         self.assertTrue(d.eligible)
@@ -55,8 +63,6 @@ class T(unittest.TestCase):
         self.assertEqual(d.reason, 'continent_vivacite_bornee')
 
     def test_bdr_in_c1_uses_same_generic_mainland_rule(self):
-        # C1 has no BDR-specific reliability path: Bouches-du-Rhone are one of
-        # the ordinary non-Corsica regions represented by region_kind='mainland'.
         d = self.ev(
             region_kind='mainland',
             last_declared_at=datetime(2026, 6, 20),
@@ -148,6 +154,11 @@ class T(unittest.TestCase):
         self.assertFalse(p.declaration_eligible_for_phase(
             datetime(2026, 2, 1), date(2026, 4, 8)
         ))
+
+    def test_rupture_has_priority_over_independent_inactivity(self):
+        d = self.ev(target_rupture_active=True, independently_inactive=True)
+        self.assertFalse(d.eligible)
+        self.assertEqual(d.reason, 'rupture_active')
 
     def test_inactive_overrides(self):
         d = self.ev(**self.shield_args(
