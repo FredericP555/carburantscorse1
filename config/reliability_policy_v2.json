@@ -4,7 +4,11 @@
   "cap_tolerance_below_eur": 0.002,
   "cap_tolerance_above_eur": 0.001,
   "corsica_liveness": "other_principal_fuel",
-  "mainland_liveness": "any_other_declared_fuel",
+  "mainland_liveness": {
+    "mode": "any_other_declared_fuel",
+    "liveness_max_age_days": 45,
+    "absolute_target_max_age_days": 90
+  },
   "double_cap": {
     "enabled": true,
     "external_index": "rotterdam_gazole",
@@ -15,6 +19,7 @@
     "independent_inactivity_overrides": true,
     "rupture_overrides": true,
     "no_resurrection_at_cap_entry": true,
-    "shield_detection_uses_normal_fresh_data_only": true
+    "shield_detection_uses_normal_fresh_data_only": true,
+    "mainland_liveness_never_extends_target_to_age_90_or_more": true
   }
 }
