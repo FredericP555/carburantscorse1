@@ -46,20 +46,35 @@ Cette règle est également **identique dans C1 et C2**.
 
 Quand Gazole et SP95 sont tous deux au plafond, la vivacité croisée entre eux ne suffit plus. Le contrôle devient économique :
 
-- Rotterdam Gazole **>= R2 Corse** : les vieux prix Gazole/SP95 peuvent rester admissibles, sous réserve des autres garde-fous ;
-- Rotterdam Gazole **< R2 Corse** : les vieux prix Gazole/SP95 sont exclus de la moyenne ;
+- Rotterdam Gazole **>= R2 de la phase courante** : les vieux prix Gazole/SP95 peuvent rester admissibles, sous réserve des autres garde-fous ;
+- Rotterdam Gazole **< R2 de la phase courante** : les vieux prix Gazole/SP95 sont exclus de la moyenne ;
 - après un premier passage sous R2 intervenu après l'expiration normale du carburant cible, ce vieux prix reste exclu même si Rotterdam remonte ensuite ; il ne redevient admissible qu'après une **nouvelle déclaration de ce carburant cible**, qui crée un nouveau J0 ;
 - ce mécanisme ne change jamais le statut « bouclier effectif ».
 
-Calibration candidate 2026 : `k_corse ≈ 0,733`, donc `R2 = k × R1`, avec R1 calculé sur les trois dernières cotations réellement observées avant le 8 avril 2026.
+### Calibration de R2 par période de bouclier effectif
+
+Les dates des **3, 6 et 7 avril 2026 ne définissent pas R1 pour toujours**. Elles appartiennent uniquement à l'épisode de référence 2026 qui sert à calibrer le coefficient territorial `k_corse ≈ 0,733`.
+
+À chaque **nouvelle phase de bouclier effectif**, R1 est recalculé comme la moyenne des **trois dernières cotations Rotterdam réellement observées avant le début de cette phase**. Le seuil applicable à cette phase est alors :
+
+`R2_phase = k_corse × R1_phase`
+
+Ainsi, si les prix repassent sous le plafond et que le bouclier cesse d'être effectif, puis qu'ils reviennent plus tard au plafond et qu'une nouvelle période de bouclier effectif est détectée, cette nouvelle période reçoit **un nouveau R1 et un nouveau R2**, même si le montant du plafond n'a pas changé.
+
+Le coefficient `k` reste celui calibré sur l'épisode de référence ; ce sont R1 et R2 qui sont recalculés à chaque nouvelle phase.
 
 ## 6. Phases de plafond et absence de résurrection
 
-Une **phase de plafond** est simplement une portion continue de bouclier effectif pendant laquelle le montant du plafond ne change pas.
+Une **phase de plafond** est une portion continue de bouclier effectif pendant laquelle le montant du plafond ne change pas.
+
+Une nouvelle phase commence donc dans deux cas :
+
+- le plafond change ;
+- le bouclier effectif s'interrompt puis recommence plus tard, même avec le même plafond.
 
 Exemple Gazole 2026 : le passage de 2,09 € à 2,25 € le 8 avril crée automatiquement une nouvelle phase.
 
-C1 publie désormais ces phases explicitement dans les métadonnées partagées avec : date de début, date de fin, carburant, plafond et identifiant de phase.
+C1 publie ces phases explicitement dans les métadonnées partagées avec : date de début, date de fin, carburant, plafond et identifiant de phase. La date de début de phase sert aussi de point d'ancrage pour recalculer le R1/R2 Rotterdam de cette phase.
 
 Le garde-fou « aucune résurrection » est calculé automatiquement :
 
@@ -75,7 +90,7 @@ La chaîne préparée est **UFIP → C1 → C2**.
 
 - C1 effectue l'unique téléchargement UFIP.
 - C1 produit `rotterdam_gazole_observed.csv` et `rotterdam_gazole_daily.csv`.
-- La fenêtre UFIP conserve les observations de calibration 2026 même après le changement d'année.
+- La fenêtre UFIP conserve les observations historiques nécessaires au calibrage de `k` et au calcul des trois cotations précédant chaque nouvelle phase.
 - C1 publie, dans une même release validée : snapshot 13/20, métadonnées avec phases de plafond, deux CSV Rotterdam et registre Corse canonique.
 - Les SHA-256 sont contrôlables par C2.
 
