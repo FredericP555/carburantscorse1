@@ -4,6 +4,10 @@
 Normal freshness is 45 calendar days per station x fuel. Shield-effective status
 is determined independently; R2 only controls stale-price admissibility in the
 double-cap case and never starts or ends the shield.
+
+In C1, ``mainland`` means every non-Corsica region uniformly, including the
+Bouches-du-Rhone. C1 has no BDR-specific reliability branch. Corsica follows the
+same prepared reliability rule as Corsica in C2.
 """
 from __future__ import annotations
 
@@ -118,7 +122,9 @@ def evaluate(
 
     activity_by_fuel = activity_by_fuel or {}
 
-    # C1 mainland fallback only; deliberately distinct from C2/BdR.
+    # C1 generic non-Corsica rule: every mainland region follows this exact
+    # branch, including the Bouches-du-Rhone. There is deliberately no BDR
+    # exception or BDR-specific Rotterdam/shield logic in C1.
     if region_kind == "mainland":
         if age >= MAINLAND_ABSOLUTE_MAX_AGE_DAYS:
             return Decision(False, "continent_age_absolu_90j", age)
@@ -131,6 +137,7 @@ def evaluate(
             return Decision(True, "continent_vivacite_bornee", age)
         return Decision(False, "continent_sans_vivacite_recente", age)
 
+    # Corsica: intentionally identical in principle to the Corsica branch in C2.
     if not (is_total and shield_effective):
         return Decision(False, "ancien_hors_exception", age)
     if phase_started_on is None or phase_started_on > day:
@@ -149,10 +156,10 @@ def evaluate(
         return Decision(False, "double_plafond_rotterdam_indisponible", age)
 
     if recent_liveness(
-        region_kind="corsica",
+        region_kind=region_kind,
         target_fuel=target_fuel,
         activity_by_fuel=activity_by_fuel,
         day=day,
     ):
-        return Decision(True, "bouclier_vivacite_croisee_45j", age)
+        return Decision(True, "bouclier_vivacite_45j_renouvelee", age)
     return Decision(False, "bouclier_sans_vivacite_recente", age)
