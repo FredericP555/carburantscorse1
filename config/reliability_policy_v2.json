@@ -35,7 +35,7 @@
       "exit_observation_dates": ["2026-05-29", "2026-06-01", "2026-06-02"],
       "publisher": "shared_snapshot_metadata"
     },
-    "runtime_rule": "rotterdam_eur_l >= R2 keeps stale Gazole/SP95 potentially admissible; rotterdam_eur_l < R2 excludes stale Gazole/SP95; R2 never defines shield effectiveness",
+    "runtime_rule": "after normal 45-day expiry, any Rotterdam day below R2 locks the stale target price out until that target fuel is declared again; R2 never defines shield effectiveness",
     "fail_closed_if_missing": true
   },
   "cap_phase": {
