@@ -13,13 +13,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date, datetime
-import math
 from typing import Mapping
+
+from a4c_common.price_math import at_cap, finite_number
 
 NORMAL_MAX_AGE_DAYS = 45
 MAINLAND_ABSOLUTE_MAX_AGE_DAYS = 90
-CAP_TOLERANCE_BELOW_EUR = 0.002
-CAP_TOLERANCE_ABOVE_EUR = 0.001
 PRINCIPAL_FUELS = frozenset({"Gazole", "SP95"})
 VALID_REGION_KINDS = frozenset({"corsica", "mainland"})
 
@@ -40,23 +39,6 @@ def age_days(last_declared_at: datetime | None, day: date) -> int | None:
 def normally_fresh(last_declared_at: datetime | None, day: date) -> bool:
     age = age_days(last_declared_at, day)
     return age is not None and 0 <= age < NORMAL_MAX_AGE_DAYS
-
-
-def finite_number(value: float | None) -> bool:
-    if value is None:
-        return False
-    try:
-        return math.isfinite(float(value))
-    except (TypeError, ValueError):
-        return False
-
-
-def at_cap(price: float | None, cap: float | None) -> bool:
-    if not finite_number(price) or not finite_number(cap):
-        return False
-    price_f = float(price)
-    cap_f = float(cap)
-    return (cap_f - CAP_TOLERANCE_BELOW_EUR) <= price_f <= (cap_f + CAP_TOLERANCE_ABOVE_EUR)
 
 
 def recent_liveness(
@@ -105,10 +87,11 @@ def evaluate(
         raise ValueError("region_kind must be 'corsica' or 'mainland'")
 
     age = age_days(last_declared_at, day)
-    if independently_inactive:
-        return Decision(False, "inactive_independant", age)
+    # Audit priority is intentional: rupture first, then independent inactivity.
     if target_rupture_active:
         return Decision(False, "rupture_active", age)
+    if independently_inactive:
+        return Decision(False, "inactive_independant", age)
     if (
         last_declared_at is None or age is None or age < 0
         or not latest_price_valid or not finite_number(last_price)
