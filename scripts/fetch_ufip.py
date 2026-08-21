@@ -13,14 +13,25 @@ if str(ROOT) not in sys.path:
 
 from a4c_common.ufip import expand_daily, fetch_rotterdam_gazole
 
+# Keep the fixed 2026 calibration observations available in future years while still
+# avoiding an unnecessarily older export. In 2026 the normal Jan-1 start is retained;
+# from 2027 onward the shared series starts on 2026-04-01, before every calibration date.
+CALIBRATION_HISTORY_START = date(2026, 4, 1)
+
 
 def parse_iso(raw: str) -> date:
     return date.fromisoformat(raw)
 
 
+def default_start(day: date | None = None) -> date:
+    day = day or date.today()
+    current_year_start = date(day.year, 1, 1)
+    return min(current_year_start, CALIBRATION_HISTORY_START)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--start", type=parse_iso, default=date(date.today().year, 1, 1))
+    parser.add_argument("--start", type=parse_iso, default=default_start())
     parser.add_argument("--end", type=parse_iso, default=date.today())
     parser.add_argument("--output-dir", default="outputs/ufip")
     args = parser.parse_args()
