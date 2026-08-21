@@ -4,6 +4,9 @@
 C1 owns the single UFIP download. This module derives the candidate Corsica
 calibration metadata from that one observed series so C2 can consume the exact
 same result instead of recalculating it independently.
+
+R2 is an admissibility threshold for stale station prices in the double-cap
+case. It does NOT define whether the TotalEnergies shield itself is effective.
 """
 from __future__ import annotations
 
@@ -73,6 +76,42 @@ def calibration_2026(path: str | Path = OBSERVED_FILE) -> dict:
     }
 
 
+def read_daily_value(day: date, path: str | Path = DAILY_FILE) -> float | None:
+    """Read the calendar-day Rotterdam value (observed or carried) for runtime use."""
+    with Path(path).open("r", encoding="utf-8-sig", newline="") as fh:
+        reader = csv.DictReader(fh)
+        required = {"date", VALUE_COLUMN}
+        missing = required - set(reader.fieldnames or [])
+        if missing:
+            raise ValueError(f"UFIP daily CSV missing columns: {sorted(missing)}")
+        for row in reader:
+            raw_date = (row.get("date") or "").strip()
+            if raw_date and date.fromisoformat(raw_date[:10]) == day:
+                raw_value = (row.get(VALUE_COLUMN) or "").strip()
+                return None if not raw_value else float(raw_value)
+    return None
+
+
+def constraining_on(
+    day: date,
+    *,
+    observed_file: str | Path = OBSERVED_FILE,
+    daily_file: str | Path = DAILY_FILE,
+) -> bool:
+    """Return whether Rotterdam is on the admissible side of Corsica R2.
+
+    The agreed rule is deliberately simple: Rotterdam >= R2 keeps stale prices
+    potentially admissible in the double-cap case; Rotterdam < R2 excludes them.
+    Missing daily data fails closed by raising an error. This result never changes
+    the independently detected shield-effective status.
+    """
+    value = read_daily_value(day, daily_file)
+    if value is None:
+        raise ValueError(f"Missing Rotterdam daily value for {day.isoformat()}")
+    r2 = float(calibration_2026(observed_file)["r2"])
+    return float(value) >= r2
+
+
 def _sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
@@ -95,6 +134,7 @@ def shared_metadata(
         "daily_sha256": _sha256(daily_path),
         "value_column": VALUE_COLUMN,
         "corsica_calibration": calibration_2026(observed_path),
+        "runtime_rule": "rotterdam_eur_l >= R2 keeps stale double-cap prices potentially admissible; R2 does not define shield effectiveness",
     }
 
 
