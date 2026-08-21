@@ -1,30 +1,9 @@
 #!/usr/bin/env python3
 """Prepared (inactive) A4C reliability policy.
 
-This module encodes the proposed post-Monday rule without activating it in any
-publication pipeline.
-
-Principles
-----------
-* Normal rule: 45 calendar days per station x fuel. A declaration on J0 is
-  usable on J0..J+44; at J+45 it is stale. A same-price redeclaration resets
-  the clock because the clock is based on the declaration timestamp.
-* Corsica shield exceptions concern only Gazole/SP95 at TotalEnergies stations
-  while the independently detected shield is effective.
-* With one principal fuel at the cap, a normally-fresh declaration of the other
-  principal fuel proves liveness and starts a new rolling 45-day support window.
-* With Gazole and SP95 both at their caps, cross-liveness is no longer enough:
-  the prepared Corsica rule uses Rotterdam versus R2. R2 affects only whether
-  stale station prices remain admissible; it never defines whether the shield
-  itself is effective.
-* A price already stale when the current cap phase starts cannot be resurrected.
-  This is derived from ``phase_started_on`` rather than trusted as a caller
-  boolean. A later target-fuel declaration inside the phase is fresh evidence
-  and is eligible normally.
-* Independent inactivity, target-fuel rupture, invalid/non-finite price or a
-  future target declaration always override every exception.
-* The separate C1 mainland fallback rule remains bounded at 90 days; that rule
-  is not the C2 Bouches-du-Rhone rule.
+Normal freshness is 45 calendar days per station x fuel. Shield-effective status
+is determined independently; R2 only controls stale-price admissibility in the
+double-cap case and never starts or ends the shield.
 """
 from __future__ import annotations
 
@@ -77,13 +56,9 @@ def at_cap(price: float | None, cap: float | None) -> bool:
 
 
 def recent_liveness(
-    *,
-    region_kind: str,
-    target_fuel: str,
-    activity_by_fuel: Mapping[str, datetime],
-    day: date,
+    *, region_kind: str, target_fuel: str,
+    activity_by_fuel: Mapping[str, datetime], day: date,
 ) -> bool:
-    """Whether another fresh declaration supports the target for another 45 days."""
     if region_kind not in VALID_REGION_KINDS:
         raise ValueError("region_kind must be 'corsica' or 'mainland'")
     for fuel, ts in activity_by_fuel.items():
@@ -100,13 +75,7 @@ def declaration_eligible_for_phase(
     last_declared_at: datetime | None,
     phase_started_on: date | None,
 ) -> bool:
-    """Apply the no-resurrection guard for the current cap phase.
-
-    A declaration is eligible when it was still <45 days old at phase entry, or
-    when the target fuel was declared again after the phase started. This means
-    a cap change automatically causes a fresh check simply by changing the phase
-    start date supplied by the cap/shield phase builder.
-    """
+    """No-resurrection guard for the current cap phase."""
     if last_declared_at is None or phase_started_on is None:
         return False
     declared_on = last_declared_at.date()
@@ -117,27 +86,17 @@ def declaration_eligible_for_phase(
 
 
 def evaluate(
-    *,
-    day: date,
-    region_kind: str,
-    target_fuel: str,
-    last_declared_at: datetime | None,
-    last_price: float | None,
-    latest_price_valid: bool = True,
-    target_rupture_active: bool = False,
-    independently_inactive: bool = False,
-    is_total: bool = False,
-    shield_effective: bool = False,
-    applicable_cap: float | None = None,
+    *, day: date, region_kind: str, target_fuel: str,
+    last_declared_at: datetime | None, last_price: float | None,
+    latest_price_valid: bool = True, target_rupture_active: bool = False,
+    independently_inactive: bool = False, is_total: bool = False,
+    shield_effective: bool = False, applicable_cap: float | None = None,
     phase_started_on: date | None = None,
     activity_by_fuel: Mapping[str, datetime] | None = None,
-    gazole_price: float | None = None,
-    gazole_cap: float | None = None,
-    sp95_price: float | None = None,
-    sp95_cap: float | None = None,
-    rotterdam_gazole_constraining: bool | None = None,
+    gazole_price: float | None = None, gazole_cap: float | None = None,
+    sp95_price: float | None = None, sp95_cap: float | None = None,
+    rotterdam_stale_price_admissible: bool | None = None,
 ) -> Decision:
-    """Evaluate one station/fuel/day under the prepared policy."""
     if region_kind not in VALID_REGION_KINDS:
         raise ValueError("region_kind must be 'corsica' or 'mainland'")
 
@@ -147,11 +106,8 @@ def evaluate(
     if target_rupture_active:
         return Decision(False, "rupture_active", age)
     if (
-        last_declared_at is None
-        or age is None
-        or age < 0
-        or not latest_price_valid
-        or not finite_number(last_price)
+        last_declared_at is None or age is None or age < 0
+        or not latest_price_valid or not finite_number(last_price)
     ):
         return Decision(False, "prix_ou_date_absent_invalide", age)
     if normally_fresh(last_declared_at, day):
@@ -162,7 +118,7 @@ def evaluate(
 
     activity_by_fuel = activity_by_fuel or {}
 
-    # C1 mainland fallback only. It is intentionally distinct from C2/BdR.
+    # C1 mainland fallback only; deliberately distinct from C2/BdR.
     if region_kind == "mainland":
         if age >= MAINLAND_ABSOLUTE_MAX_AGE_DAYS:
             return Decision(False, "continent_age_absolu_90j", age)
@@ -175,8 +131,6 @@ def evaluate(
             return Decision(True, "continent_vivacite_bornee", age)
         return Decision(False, "continent_sans_vivacite_recente", age)
 
-    # Corse: the shield status comes from the independent detector. R2 never
-    # turns that detector on or off; it only affects stale-price admissibility.
     if not (is_total and shield_effective):
         return Decision(False, "ancien_hors_exception", age)
     if phase_started_on is None or phase_started_on > day:
@@ -188,10 +142,10 @@ def evaluate(
 
     both_capped = at_cap(gazole_price, gazole_cap) and at_cap(sp95_price, sp95_cap)
     if both_capped:
-        if rotterdam_gazole_constraining is True:
+        if rotterdam_stale_price_admissible is True:
             return Decision(True, "double_plafond_rotterdam_admissible", age)
-        if rotterdam_gazole_constraining is False:
-            return Decision(False, "double_plafond_rotterdam_sous_r2", age)
+        if rotterdam_stale_price_admissible is False:
+            return Decision(False, "double_plafond_rotterdam_verrouille", age)
         return Decision(False, "double_plafond_rotterdam_indisponible", age)
 
     if recent_liveness(
