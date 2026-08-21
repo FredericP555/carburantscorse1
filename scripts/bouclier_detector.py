@@ -8,7 +8,7 @@ A day is a raw active day when:
 1. the applicable TotalEnergies ceiling is known;
 2. at least one active TotalEnergies station is effectively at the ceiling, defined as within
    0.2 c/L below to 0.1 c/L above it;
-3. the 75th percentile of active non-Total Corsica stations is at or above the ceiling.
+3. the 75th percentile of active confirmed non-Total Corsica stations is at or above the ceiling.
 
 A period is confirmed after 2 consecutive raw active days, but starts on the first of those two
 days. Once periods are confirmed, a single inactive day between two confirmed runs is filled.
@@ -35,14 +35,42 @@ MARKET_QUANTILE = 0.75
 MARKET_PRESSURE_TOLERANCE_EUR = 0.0
 CONFIRMATION_DAYS = 2
 MAX_GAP_DAYS = 1
-MAX_AGE_DAYS = core.MAX_FFILL_DAYS
+MAX_AGE_DAYS = 45
 DYNAMIC_START_YEAR = 2026
 HISTORICAL_RULE_FROZEN_THROUGH = date(2025, 12, 31)
 
-REGISTRY = json.loads(Path('config/total_corse_stations.json').read_text(encoding='utf-8'))
-CURRENT_TOTAL_IDS = set(REGISTRY['stations'])
-HISTORICAL_TOTAL_IDS = set(REGISTRY.get('historical_aliases', {}))
-TOTAL_IDS = CURRENT_TOTAL_IDS | HISTORICAL_TOTAL_IDS
+TOTAL_REGISTRY = json.loads(Path('config/total_corse_stations.json').read_text(encoding='utf-8'))
+HISTORICAL_TOTAL_IDS = {str(x) for x in TOTAL_REGISTRY.get('historical_aliases', {})}
+BRAND_REGISTRY = json.loads(Path('config/corse_station_brands.json').read_text(encoding='utf-8'))
+BRAND_STATIONS = BRAND_REGISTRY.get('stations', {})
+
+BRAND_TOTAL = 'TOTAL'
+BRAND_NON_TOTAL = 'NON_TOTAL_CONFIRMED'
+BRAND_UNKNOWN = 'UNKNOWN'
+
+
+def _brand_state(station_id) -> str:
+    """Return TOTAL / NON_TOTAL_CONFIRMED / UNKNOWN for dynamic brand-sensitive maths.
+
+    Historical Total aliases remain explicit Total. Every other station must be resolved in
+    the canonical C1 brand registry; absence from a Total list is never treated as proof that
+    a station is non-Total.
+    """
+    sid = str(station_id)
+    if sid in HISTORICAL_TOTAL_IDS:
+        return BRAND_TOTAL
+    entry = BRAND_STATIONS.get(sid)
+    if not isinstance(entry, dict):
+        return BRAND_UNKNOWN
+    enseigne = str(entry.get('enseigne') or '').strip()
+    segment = str(entry.get('segment') or '').strip().lower()
+    brand_source = str(entry.get('brand_source') or '').strip().lower()
+    if not enseigne or segment == 'inconnu' or brand_source in {'non_resolu', 'non-résolu', 'unresolved'}:
+        return BRAND_UNKNOWN
+    normalized = ''.join(ch for ch in enseigne.casefold() if ch.isalnum())
+    if normalized in {'total', 'totalenergies'}:
+        return BRAND_TOTAL
+    return BRAND_NON_TOTAL
 
 # Recomputed from the official historical stocks with this exact rule on 19 Aug 2026.
 HISTORICAL_RULE_RANGES = {
@@ -112,8 +140,6 @@ def _stable_flags(items: list[tuple[date, bool]]) -> list[tuple[date, bool]]:
     """Confirm 2-day runs first, then fill at most one day between confirmed runs."""
     vals = [[d, b] for d, b in sorted(items)]
 
-    # First enforce the two-consecutive-day confirmation. This preserves the first day of a
-    # confirmed run, so confirmation on day 2 is retroactive to day 1.
     i = 0
     while i < len(vals):
         if not vals[i][1]:
@@ -131,8 +157,6 @@ def _stable_flags(items: list[tuple[date, bool]]) -> list[tuple[date, bool]]:
                 vals[k][1] = False
         i = j
 
-    # Only after confirmation may one isolated inactive day be filled between two confirmed
-    # portions. Two raw singletons can therefore never be joined into a false active period.
     i = 0
     while i < len(vals):
         if vals[i][1]:
@@ -219,12 +243,15 @@ def detect_year(year: int | None = None) -> dict:
                 if st is None:
                     continue
                 ts, value = st
-                if (d - ts.date()).days > MAX_AGE_DAYS or value is None:
+                # Strict normal freshness: J0..J+44 only; J+45 is stale.
+                if (d - ts.date()).days >= MAX_AGE_DAYS or value is None:
                     continue
-                if sid in TOTAL_IDS:
+                brand_state = _brand_state(sid)
+                if brand_state == BRAND_TOTAL:
                     total_prices.append(value)
-                else:
+                elif brand_state == BRAND_NON_TOTAL:
                     non_total_prices.append(value)
+                # UNKNOWN deliberately enters neither brand-sensitive population.
 
             cap = cap_for(fuel, d)
             if cap is not None and total_prices and non_total_prices:
@@ -247,7 +274,6 @@ def detect_year(year: int | None = None) -> dict:
                     'non_total_stations': len(non_total_prices),
                     'at_cap_count': at_cap,
                     'at_cap_share': at_cap_share,
-                    # Backward-compatible aliases used by existing summaries.
                     'near_count': at_cap,
                     'near_share': at_cap_share,
                     'non_total_p75': market_p75,
@@ -289,7 +315,6 @@ def metadata(year: int | None = None) -> dict:
         }
         current_det = detected_by_year[year]
     else:
-        # Kept for diagnostic/backfill use. Production currently runs from 2026 onward.
         detected_by_year = {}
         current_det = detect_year(year)
 
@@ -317,16 +342,17 @@ def metadata(year: int | None = None) -> dict:
             'latest_non_total_stations': s.get('non_total_stations'),
             'latest_at_cap_count': s.get('at_cap_count'),
             'latest_at_cap_share': round(at_cap_share, 4) if at_cap_share is not None else None,
-            # Backward-compatible name retained for existing editorial consumers.
             'latest_near_share': round(at_cap_share, 4) if at_cap_share is not None else None,
             'latest_non_total_p75': round(s.get('non_total_p75'), 3) if s.get('non_total_p75') is not None else None,
             'latest_market_pressure': s.get('market_pressure'),
             'rule': {
-                'definition': '>=1 station Total au plafond ET P75 hors Total >= plafond',
+                'definition': '>=1 station Total au plafond ET P75 hors Total confirmé >= plafond',
                 'cap_tolerance_below_cents': CAP_BELOW_TOLERANCE_EUR * 100,
                 'cap_tolerance_above_cents': CAP_ABOVE_TOLERANCE_EUR * 100,
                 'min_total_at_cap_count': MIN_TOTAL_AT_CAP_COUNT,
-                'market_reference': '75e percentile des stations corses non-Total',
+                'market_reference': '75e percentile des stations corses non-Total confirmées',
+                'unknown_brand_policy': 'exclude_from_total_and_non_total',
+                'freshness_rule': 'age < 45 days',
                 'market_pressure_threshold': '>= plafond',
                 'confirmation_days': CONFIRMATION_DAYS,
                 'confirmation_retroactive_to_first_day': True,
