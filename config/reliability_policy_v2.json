@@ -36,19 +36,25 @@
     "calibration": {
       "status": "candidate_2026_inactive",
       "territory": "corsica",
-      "entry_date": "2026-04-08",
-      "r1_observation_count": 3,
+      "baseline_entry_date": "2026-04-08",
+      "baseline_r1_observation_dates": ["2026-04-03", "2026-04-06", "2026-04-07"],
+      "r1_observation_count_per_phase": 3,
       "k_candidate": 0.733,
-      "exit_observation_dates": ["2026-05-29", "2026-06-01", "2026-06-02"],
+      "baseline_exit_observation_dates": ["2026-05-29", "2026-06-01", "2026-06-02"],
+      "k_policy": "calibrated_from_2026_reference_episode_then_constant",
+      "phase_r1_policy": "mean_last_3_actual_observed_quotes_before_each_effective_shield_cap_phase",
+      "phase_r2_formula": "R2 = k * phase_R1",
       "publisher": "shared_snapshot_metadata"
     },
-    "runtime_rule": "after normal 45-day expiry, any Rotterdam day below R2 locks the stale target price out until that target fuel is declared again; R2 never defines shield effectiveness",
+    "runtime_rule": "after normal 45-day expiry, any Rotterdam day below the R2 calculated for the current effective-shield cap phase locks the stale target price out until that target fuel is declared again; R2 never defines shield effectiveness",
     "fail_closed_if_missing": true
   },
   "cap_phase": {
     "source": "independent_effective_shield_ranges_plus_total_cap_schedule",
     "published_in_shared_metadata": true,
     "change_of_cap_starts_new_phase": true,
+    "shield_end_then_later_restart_starts_new_phase_even_if_cap_is_unchanged": true,
+    "new_phase_recomputes_rotterdam_r1_r2": true,
     "eligibility_at_phase_entry_is_computed_from_declaration_timestamp": true
   },
   "guards": {
