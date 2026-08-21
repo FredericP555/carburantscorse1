@@ -12,7 +12,24 @@
   "double_cap": {
     "enabled": true,
     "external_index": "rotterdam_gazole",
-    "rotterdam_threshold": null,
+    "source": {
+      "market_provider": "UFIP",
+      "download_owner": "FredericP555/carburantscorse1",
+      "fetch_script": "scripts/fetch_ufip.py",
+      "observed_file": "outputs/ufip/rotterdam_gazole_observed.csv",
+      "daily_file": "outputs/ufip/rotterdam_gazole_daily.csv",
+      "shared_release_assets": true,
+      "value_column": "rotterdam_eur_l"
+    },
+    "calibration": {
+      "status": "candidate_2026_inactive",
+      "territory": "corsica",
+      "entry_date": "2026-04-08",
+      "r1_observation_count": 3,
+      "k_candidate": 0.733,
+      "exit_observation_dates": ["2026-05-29", "2026-06-01", "2026-06-02"],
+      "publisher": "shared_snapshot_metadata"
+    },
     "fail_closed_if_missing": true
   },
   "guards": {
