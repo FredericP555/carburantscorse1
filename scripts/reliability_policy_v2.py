@@ -10,22 +10,21 @@ Principles
   A declaration on J0 is usable on J0..J+44; at J+45 it is stale.
 * A same-price redeclaration resets the clock because the clock is based on the
   declaration timestamp, not on a visible price change.
-* Mainland after J+45: a recent declaration of any other fuel can prove station
-  liveness and temporarily preserve the target price, but never once the target
-  price reaches age 90 days. The liveness declaration itself must be normally
-  fresh (<45 days). This rule is independent of brand/shield identification.
-* Corsica shield exceptions apply only to TotalEnergies, only when the shield
-  status has already been established from normally-fresh observations, and
-  only when the last price is at the applicable cap.
+* Mainland after J+45: for Gazole/SP95 only, a recent declaration of any other
+  fuel can prove station liveness and temporarily preserve the target price,
+  but never once the target price reaches age 90 days. The liveness declaration
+  itself must be normally fresh (<45 days).
+* Corsica shield exceptions apply only to Gazole/SP95 at TotalEnergies stations,
+  only when the shield status has already been established from normally-fresh
+  observations, and only when the last price is at the applicable cap.
 * Corsica liveness under the shield: use the other principal fuel
   (Gazole <-> SP95).
 * Double cap in Corsica: if Gazole and SP95 are both at their effective caps,
   Rotterdam may suspend the 45-day expiry for both fuels while the Gazole cap
-  remains economically constraining.
-* Rotterdam does not prove the SP95 market price; it is used only in the
-  explicit double-cap hypothesis.
-* Independent inactivity, target-fuel rupture, or an invalid latest price
-  always overrides every exception.
+  remains economically constraining. This module consumes that verdict as an
+  input and deliberately does not define the R2 crossing rule.
+* Independent inactivity, target-fuel rupture, invalid/non-finite price or a
+  future target declaration always override every exception.
 * A Corsica shield must never resurrect a value that was already stale when
   the relevant cap phase began. ``eligible_at_cap_entry`` enforces that guard.
 """
@@ -33,6 +32,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date, datetime
+import math
 from typing import Mapping
 
 NORMAL_MAX_AGE_DAYS = 45
@@ -40,6 +40,7 @@ MAINLAND_ABSOLUTE_MAX_AGE_DAYS = 90
 CAP_TOLERANCE_BELOW_EUR = 0.002
 CAP_TOLERANCE_ABOVE_EUR = 0.001
 PRINCIPAL_FUELS = frozenset({"Gazole", "SP95"})
+VALID_REGION_KINDS = frozenset({"corsica", "mainland"})
 
 
 @dataclass(frozen=True)
@@ -60,15 +61,26 @@ def normally_fresh(last_declared_at: datetime | None, day: date) -> bool:
     return age is not None and 0 <= age < NORMAL_MAX_AGE_DAYS
 
 
-def at_cap(price: float | None, cap: float | None) -> bool:
-    if price is None or cap is None:
+def finite_number(value: float | None) -> bool:
+    if value is None:
         return False
-    return (cap - CAP_TOLERANCE_BELOW_EUR) <= float(price) <= (cap + CAP_TOLERANCE_ABOVE_EUR)
+    try:
+        return math.isfinite(float(value))
+    except (TypeError, ValueError):
+        return False
+
+
+def at_cap(price: float | None, cap: float | None) -> bool:
+    if not finite_number(price) or not finite_number(cap):
+        return False
+    price_f = float(price)
+    cap_f = float(cap)
+    return (cap_f - CAP_TOLERANCE_BELOW_EUR) <= price_f <= (cap_f + CAP_TOLERANCE_ABOVE_EUR)
 
 
 def recent_liveness(*, region_kind: str, target_fuel: str, activity_by_fuel: Mapping[str, datetime], day: date) -> bool:
     """Whether another normally-fresh declaration proves recent station activity."""
-    if region_kind not in {"corsica", "mainland"}:
+    if region_kind not in VALID_REGION_KINDS:
         raise ValueError("region_kind must be 'corsica' or 'mainland'")
     for fuel, ts in activity_by_fuel.items():
         if fuel == target_fuel:
@@ -91,23 +103,37 @@ def evaluate(*, day: date, region_kind: str, target_fuel: str,
              sp95_price: float | None = None, sp95_cap: float | None = None,
              rotterdam_gazole_constraining: bool | None = None) -> Decision:
     """Evaluate one station/fuel/day under the prepared policy."""
+    if region_kind not in VALID_REGION_KINDS:
+        raise ValueError("region_kind must be 'corsica' or 'mainland'")
+
     age = age_days(last_declared_at, day)
     if independently_inactive:
         return Decision(False, "inactive_independant", age)
     if target_rupture_active:
         return Decision(False, "rupture_active", age)
-    if last_declared_at is None or last_price is None or not latest_price_valid:
-        return Decision(False, "prix_absent_ou_invalide", age)
+    if (
+        last_declared_at is None
+        or age is None
+        or age < 0
+        or not latest_price_valid
+        or not finite_number(last_price)
+    ):
+        return Decision(False, "prix_ou_date_absent_invalide", age)
     if normally_fresh(last_declared_at, day):
         return Decision(True, "normal_45j", age)
+
+    # All prepared exceptions beyond J+44 are deliberately restricted to the
+    # two principal fuels. E10 remains eligible only under the normal freshness rule.
+    if target_fuel not in PRINCIPAL_FUELS:
+        return Decision(False, "exception_carburant_non_principal", age)
 
     activity_by_fuel = activity_by_fuel or {}
 
     # Mainland rule: after the normal 45-day window, recent activity on any
-    # other declared fuel can support the old target price, but only up to J+89.
+    # other declared fuel can support the old Gazole/SP95 price, but only up to J+89.
     # J+90 is an absolute stop even if another fuel was declared today.
     if region_kind == "mainland":
-        if age is None or age >= MAINLAND_ABSOLUTE_MAX_AGE_DAYS:
+        if age >= MAINLAND_ABSOLUTE_MAX_AGE_DAYS:
             return Decision(False, "continent_age_absolu_90j", age)
         if recent_liveness(
             region_kind=region_kind,
