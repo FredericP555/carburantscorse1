@@ -10,9 +10,7 @@ import shield_phase_v2 as s
 class ShieldPhaseT(unittest.TestCase):
     def test_gazole_range_splits_on_2026_cap_change(self):
         meta = {
-            'Gazole': {
-                'ranges': [{'d1': '2026-03-20', 'd2': '2026-04-10'}]
-            },
+            'Gazole': {'ranges': [{'d1': '2026-03-20', 'd2': '2026-04-10'}]},
             'SP95': {'ranges': []},
         }
         phases = s.phases_from_bouclier_metadata(meta)['Gazole']
@@ -41,6 +39,16 @@ class ShieldPhaseT(unittest.TestCase):
         self.assertEqual(phase['d1'], '2026-04-08')
         self.assertEqual(phase['cap'], 2.25)
         self.assertTrue(phase['phase_id'].startswith('Gazole:2026-04-08:'))
+
+    def test_double_cap_period_starts_when_second_fuel_becomes_effective(self):
+        meta = {
+            'Gazole': {'ranges': [{'d1': '2026-10-10', 'd2': '2026-11-30'}]},
+            'SP95': {'ranges': [{'d1': '2026-09-20', 'd2': '2026-12-15'}]},
+        }
+        period = s.double_cap_period_for_day(meta, date(2026, 10, 20))
+        self.assertIsNotNone(period)
+        self.assertEqual(period.started_on, date(2026, 10, 10))
+        self.assertEqual(period.ended_on, date(2026, 11, 30))
 
 
 if __name__ == '__main__':
