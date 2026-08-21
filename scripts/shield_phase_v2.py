@@ -6,7 +6,8 @@ A cap phase is a contiguous period during which:
 - the applicable TotalEnergies cap for the fuel does not change.
 
 R2 is deliberately absent from phase construction. Rotterdam never starts or
-ends an effective-shield phase.
+ends an effective-shield phase. For R2, the relevant anchor is the start of the
+current *double-cap effective period*, i.e. when Gazole and SP95 phases overlap.
 """
 from __future__ import annotations
 
@@ -24,6 +25,14 @@ class ShieldPhase:
     started_on: date
     ended_on: date
     cap: float
+
+
+@dataclass(frozen=True)
+class DoubleCapPeriod:
+    started_on: date
+    ended_on: date
+    gazole_cap: float
+    sp95_cap: float
 
 
 def _as_date(raw: str | date) -> date:
@@ -92,3 +101,20 @@ def phase_for_day(metadata: Mapping, fuel: str, day: date) -> ShieldPhase | None
         if phase.started_on <= day <= phase.ended_on:
             return phase
     return None
+
+
+def double_cap_period_for_day(metadata: Mapping, day: date) -> DoubleCapPeriod | None:
+    """Return the overlapping Gazole+SP95 effective period containing ``day``.
+
+    Its start is the later of the two fuel-phase starts. This is the date used
+    to choose the three observed Rotterdam quotations for the phase-specific R1.
+    """
+    gazole = phase_for_day(metadata, "Gazole", day)
+    sp95 = phase_for_day(metadata, "SP95", day)
+    if gazole is None or sp95 is None:
+        return None
+    start = max(gazole.started_on, sp95.started_on)
+    end = min(gazole.ended_on, sp95.ended_on)
+    if not (start <= day <= end):
+        return None
+    return DoubleCapPeriod(start, end, gazole.cap, sp95.cap)
