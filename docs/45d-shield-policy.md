@@ -9,7 +9,18 @@
 - Une redéclaration au même prix remet le compteur à zéro.
 - Prix non fini, date future, rupture/fermeture ou preuve indépendante d'inactivité : exclusion prioritaire.
 
-## 2. Bouclier effectif et fiabilité d'un vieux prix sont deux choses distinctes
+## 2. Portée territoriale dans C1
+
+C1 ne distingue que deux ensembles méthodologiques :
+
+- **Corse** ;
+- **toutes les régions hors Corse**, traitées uniformément par la règle continentale C1.
+
+Les **Bouches-du-Rhône n'ont aucun statut particulier dans C1**. Elles sont traitées exactement comme n'importe quelle autre région hors Corse. La logique spécifique BdR n'existe que dans C2, parce que C2 est précisément l'observatoire Corse ↔ BdR.
+
+La **règle Corse est la même dans C1 et dans C2, sans différence méthodologique**. C1 produit en plus les métadonnées partagées (bouclier, phases, Rotterdam, registre), mais cela ne change pas la règle d'admissibilité appliquée aux stations corses.
+
+## 3. Bouclier effectif et fiabilité d'un vieux prix sont deux choses distinctes
 
 Le statut **bouclier effectif** reste déterminé uniquement par le détecteur A4C : plafond connu, au moins une TotalEnergies au plafond avec tolérance **-0,2 c/L à +0,1 c/L**, et P75 hors Total au moins égal au plafond ; confirmation sur deux jours consécutifs, avec au plus un jour isolé comblé.
 
@@ -17,7 +28,9 @@ R2 ne démarre pas et ne termine pas le bouclier. Il intervient seulement ensuit
 
 Sur la branche de préparation, le détecteur dynamique utilise `age < 45` et le tri-état `TOTAL / NON_TOTAL_CONFIRMED / UNKNOWN`. Un ID `UNKNOWN` n'entre ni dans le groupe Total ni dans le P75 hors Total.
 
-## 3. Corse — un seul carburant principal au plafond
+## 4. Corse — un seul carburant principal au plafond
+
+Cette règle est **identique dans C1 et C2**.
 
 Au-delà des 45 jours normaux, l'exception concerne uniquement Gazole/SP95 d'une station TotalEnergies pendant un bouclier effectif, si le prix cible est au plafond de sa phase.
 
@@ -27,7 +40,9 @@ Au-delà des 45 jours normaux, l'exception concerne uniquement Gazole/SP95 d'une
 - À défaut de nouvelle déclaration admissible depuis 45 jours, le vieux prix cible sort de la moyenne.
 - E10 ne peut pas servir de vivacité en Corse et ne bénéficie pas lui-même d'une exception de vieillissement.
 
-## 4. Corse — Gazole et SP95 simultanément au plafond
+## 5. Corse — Gazole et SP95 simultanément au plafond
+
+Cette règle est également **identique dans C1 et C2**.
 
 Quand Gazole et SP95 sont tous deux au plafond, la vivacité croisée entre eux ne suffit plus. Le contrôle devient économique :
 
@@ -38,7 +53,7 @@ Quand Gazole et SP95 sont tous deux au plafond, la vivacité croisée entre eux 
 
 Calibration candidate 2026 : `k_corse ≈ 0,733`, donc `R2 = k × R1`, avec R1 calculé sur les trois dernières cotations réellement observées avant le 8 avril 2026.
 
-## 5. Phases de plafond et absence de résurrection
+## 6. Phases de plafond et absence de résurrection
 
 Une **phase de plafond** est simplement une portion continue de bouclier effectif pendant laquelle le montant du plafond ne change pas.
 
@@ -54,7 +69,7 @@ Le garde-fou « aucune résurrection » est calculé automatiquement :
 
 Il n'existe donc plus de booléen manuel `eligible_at_cap_entry` à faire confiance : le moteur calcule cette admissibilité à partir des dates.
 
-## 6. Source Rotterdam et release commune C1 → C2
+## 7. Source Rotterdam et release commune C1 → C2
 
 La chaîne préparée est **UFIP → C1 → C2**.
 
@@ -64,11 +79,17 @@ La chaîne préparée est **UFIP → C1 → C2**.
 - C1 publie, dans une même release validée : snapshot 13/20, métadonnées avec phases de plafond, deux CSV Rotterdam et registre Corse canonique.
 - Les SHA-256 sont contrôlables par C2.
 
-## 7. Continent C1 — règle distincte
+## 8. Toutes les régions hors Corse dans C1, BdR comprises
 
-La règle continentale de C1 reste distincte de la règle BdR de C2 : J+45 à J+89 par vivacité sur un autre carburant, puis arrêt absolu à J+90. Ce garde-fou C1 ne doit pas être transposé aux BdR de C2.
+La règle continentale C1 s'applique **uniformément à toutes les régions hors Corse**, y compris les Bouches-du-Rhône :
 
-## 8. Garde-fous prioritaires
+- J0 à J+44 : règle normale ;
+- J+45 à J+89 : le vieux prix Gazole/SP95 peut rester admissible si la station a déclaré un autre carburant depuis moins de 45 jours ;
+- J+90 : exclusion absolue du vieux prix cible.
+
+Il n'existe **aucun traitement spécial BdR dans C1** : pas de `k_bdr`, pas de `R2 BdR`, pas de branche Total classique spécifique. Ces éléments appartiennent uniquement à C2.
+
+## 9. Garde-fous prioritaires
 
 Dans tous les cas :
 
