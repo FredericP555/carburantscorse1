@@ -1,6 +1,6 @@
 # Politique préparée — seuil 45 jours et bouclier
 
-> **Statut : PRÉPARÉE, NON ACTIVÉE.** Cette branche ne modifie aucun calcul de production. `main`, les workflows, `scripts/update_data_v2.py` et le détecteur de bouclier actuellement en production restent inchangés jusqu'à décision explicite après la mise à jour du lundi 24 août 2026.
+> **Statut : PRÉPARÉE, NON ACTIVÉE.** Cette branche ne modifie aucun calcul de production. `main`, `scripts/update_data_v2.py` et le détecteur de bouclier actuellement en production restent inchangés jusqu'à décision explicite après la mise à jour du lundi 24 août 2026.
 
 ## 1. Règle normale
 
@@ -23,9 +23,19 @@ La période est confirmée après **2 jours consécutifs** remplissant ces condi
 
 Au-delà de 45 jours en Corse, l'exception préparée est examinée uniquement pour une station **TotalEnergies**, après détection du bouclier avec des données normalement fraîches, si le dernier prix du carburant cible est au plafond applicable et s'il était encore admissible à l'entrée de la phase.
 
-La vivacité est recherchée uniquement sur l'autre carburant principal (**Gazole ↔ SP95**). Si Gazole et SP95 sont simultanément au plafond, le critère Rotterdam Gazole peut prendre le relais dans la configuration double-plafond, selon la même logique cible que dans C2. Rotterdam n'est jamais utilisé comme indice du marché SP95.
+La vivacité est recherchée uniquement sur l'autre carburant principal (**Gazole ↔ SP95**). Si Gazole et SP95 sont simultanément au plafond, le critère Rotterdam Gazole peut prendre le relais dans la configuration double-plafond. Rotterdam n'est jamais utilisé comme indice du marché SP95.
 
-Le seuil Rotterdam de C1 reste volontairement non activé tant que son raccordement à la calibration Corse de C2 n'a pas été explicitement validé ; aucune récupération UFIP supplémentaire n'est ajoutée ici.
+### Source Rotterdam commune C1 → C2
+
+La préparation retient désormais une seule chaîne : **UFIP → C1 → C2**.
+
+- C1 effectue l'unique téléchargement UFIP via `scripts/fetch_ufip.py`.
+- C1 produit `outputs/ufip/rotterdam_gazole_observed.csv` et `outputs/ufip/rotterdam_gazole_daily.csv`.
+- Ces deux fichiers sont publiés comme assets de la même release que le snapshot partagé C1→C2.
+- Leur SHA-256 et le calibrage Corse candidat sont inscrits dans `official_13_20.meta.json`.
+- C2 doit consommer ces assets et ce calibrage ; il ne recalcule pas indépendamment la Corse et ne relance pas UFIP.
+
+Le calibrage Corse candidat 2026 reste **non activé** : entrée 8 avril 2026 ; R1 = moyenne des trois dernières cotations réellement observées avant l'entrée ; sorties 29 mai, 1er juin et 2 juin ; `k_corse ≈ 0,733`, avec `R2 = k × R1`.
 
 ## 3. Continent — vivacité bornée après 45 jours
 
@@ -58,12 +68,12 @@ Le simple vieillissement d'un prix pendant un double plafond ne constitue pas, �
 3. Brancher cette politique uniquement dans un calcul candidat, jamais directement en production.
 4. Produire trois séries côte à côte : `ACTUEL`, `NOUVELLE_REGLE_PROSPECTIVE`, `NOUVELLE_REGLE_RETROACTIVE`.
 5. Mesurer pour C1 et C2 : nombre de jours modifiés, stations gagnées/perdues, variation maximale d'une moyenne journalière, moyennes annuelles, écarts Corse/continent ou Corse/BdR et périodes de bouclier modifiées.
-6. Valider le raccordement du critère Rotterdam Corse sans utiliser de prix prolongés pour détecter le bouclier.
+6. Valider le critère Rotterdam Corse à partir de l'unique série publiée par C1, sans utiliser de prix prolongés pour détecter le bouclier.
 7. Décider ensuite explicitement de toute migration ou réécriture historique.
 
 ## Rétroactivité
 
-- **C1** : la règle normale historique est déjà fondée sur un forward-fill de 45 jours. Une simulation rétroactive devra désormais mesurer séparément l'effet de la vivacité continentale bornée 45→89 jours et celui des exceptions de bouclier en Corse.
+- **C1** : la règle normale historique est déjà fondée sur un forward-fill de 45 jours. Une simulation rétroactive devra mesurer séparément l'effet de la vivacité continentale bornée 45→89 jours et celui des exceptions de bouclier en Corse.
 - **C2** : l'historique a été construit avec 150 jours en Corse et 30 jours dans les BdR. Une simple bascule prospective vers 45/45 créerait une rupture méthodologique. Un recalcul rétroactif 45/45 est donc à privilégier sous réserve des contrôles.
 - L'exception `double plafond + Rotterdam` ne doit pas être reconstruite artificiellement pour les périodes où aucune série Rotterdam fiable n'est disponible, notamment 2023-2024 à ce stade.
 - Toute réécriture historique éventuelle doit être exceptionnelle, documentée et précédée d'un rapport de différences. Aucune modification silencieuse de l'historique append-only.
