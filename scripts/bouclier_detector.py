@@ -26,6 +26,13 @@ from collections import defaultdict
 from datetime import date, timedelta
 from pathlib import Path
 
+from a4c_common.corse_brand import (
+    NON_TOTAL_CONFIRMED as BRAND_NON_TOTAL,
+    TOTAL as BRAND_TOTAL,
+    UNKNOWN as BRAND_UNKNOWN,
+    classify_registry_entry,
+)
+from a4c_common.price_math import at_cap as price_at_cap
 import update_data_v2 as core
 
 CAP_BELOW_TOLERANCE_EUR = 0.002
@@ -44,33 +51,14 @@ HISTORICAL_TOTAL_IDS = {str(x) for x in TOTAL_REGISTRY.get('historical_aliases',
 BRAND_REGISTRY = json.loads(Path('config/corse_station_brands.json').read_text(encoding='utf-8'))
 BRAND_STATIONS = BRAND_REGISTRY.get('stations', {})
 
-BRAND_TOTAL = 'TOTAL'
-BRAND_NON_TOTAL = 'NON_TOTAL_CONFIRMED'
-BRAND_UNKNOWN = 'UNKNOWN'
-
 
 def _brand_state(station_id) -> str:
-    """Return TOTAL / NON_TOTAL_CONFIRMED / UNKNOWN for dynamic brand-sensitive maths.
-
-    Historical Total aliases remain explicit Total. Every other station must be resolved in
-    the canonical C1 brand registry; absence from a Total list is never treated as proof that
-    a station is non-Total.
-    """
+    """Return TOTAL / NON_TOTAL_CONFIRMED / UNKNOWN for dynamic brand-sensitive maths."""
     sid = str(station_id)
     if sid in HISTORICAL_TOTAL_IDS:
         return BRAND_TOTAL
-    entry = BRAND_STATIONS.get(sid)
-    if not isinstance(entry, dict):
-        return BRAND_UNKNOWN
-    enseigne = str(entry.get('enseigne') or '').strip()
-    segment = str(entry.get('segment') or '').strip().lower()
-    brand_source = str(entry.get('brand_source') or '').strip().lower()
-    if not enseigne or segment == 'inconnu' or brand_source in {'non_resolu', 'non-résolu', 'unresolved'}:
-        return BRAND_UNKNOWN
-    normalized = ''.join(ch for ch in enseigne.casefold() if ch.isalnum())
-    if normalized in {'total', 'totalenergies'}:
-        return BRAND_TOTAL
-    return BRAND_NON_TOTAL
+    return classify_registry_entry(BRAND_STATIONS.get(sid))
+
 
 # Recomputed from the official historical stocks with this exact rule on 19 Aug 2026.
 HISTORICAL_RULE_RANGES = {
@@ -254,19 +242,21 @@ def detect_year(year: int | None = None) -> dict:
                 # UNKNOWN deliberately enters neither brand-sensitive population.
 
             cap = cap_for(fuel, d)
-            if cap is not None and total_prices and non_total_prices:
-                at_cap = sum(
-                    1
-                    for p in total_prices
-                    if cap - CAP_BELOW_TOLERANCE_EUR <= p <= cap + CAP_ABOVE_TOLERANCE_EUR
-                )
-                at_cap_share = at_cap / len(total_prices)
+            if cap is not None:
+                at_cap = sum(1 for p in total_prices if price_at_cap(p, cap))
+                at_cap_share = at_cap / len(total_prices) if total_prices else 0.0
                 market_p75 = percentile(non_total_prices, MARKET_QUANTILE)
-                pressure = (
-                    market_p75 is not None
-                    and market_p75 >= cap - MARKET_PRESSURE_TOLERANCE_EUR
+                pressure = market_p75 is not None and market_p75 >= cap - MARKET_PRESSURE_TOLERANCE_EUR
+                raw_active = bool(
+                    total_prices
+                    and non_total_prices
+                    and at_cap >= MIN_TOTAL_AT_CAP_COUNT
+                    and pressure
                 )
-                raw_active = at_cap >= MIN_TOTAL_AT_CAP_COUNT and pressure
+                # A cap-known day with insufficient fresh populations is an explicit
+                # inactive day, not a missing calendar date. This allows exactly one
+                # isolated inactive day to be bridged by _stable_flags without creating
+                # a false phase boundary.
                 raw.append((d, raw_active))
                 stats[d] = {
                     'cap': cap,
@@ -279,8 +269,8 @@ def detect_year(year: int | None = None) -> dict:
                     'non_total_p75': market_p75,
                     'market_pressure': pressure,
                     'raw_active': raw_active,
-                    'total_min_price': min(total_prices),
-                    'total_max_price': max(total_prices),
+                    'total_min_price': min(total_prices) if total_prices else None,
+                    'total_max_price': max(total_prices) if total_prices else None,
                 }
             d += timedelta(days=1)
 
