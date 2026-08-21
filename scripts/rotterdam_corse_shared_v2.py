@@ -1,18 +1,19 @@
 #!/usr/bin/env python3
 """Canonical prepared Corsica Rotterdam calibration produced upstream by C1.
 
-C1 owns the single UFIP download. This module derives the candidate Corsica
-calibration metadata from that one observed series so C2 can consume the exact
-same result instead of recalculating it independently.
+C1 owns the single UFIP download. R2 is an admissibility threshold for stale
+station prices in the double-cap case; it never defines whether the shield
+itself is effective.
 
-R2 is an admissibility threshold for stale station prices in the double-cap
-case. It does NOT define whether the TotalEnergies shield itself is effective.
+Once Rotterdam falls below R2 after a target price has become stale, that old
+target price stays excluded until the target fuel is declared again. This is
+reconstructed from the daily series rather than stored as mutable state.
 """
 from __future__ import annotations
 
 import csv
 import hashlib
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 from statistics import mean
 from typing import Mapping
@@ -76,8 +77,8 @@ def calibration_2026(path: str | Path = OBSERVED_FILE) -> dict:
     }
 
 
-def read_daily_value(day: date, path: str | Path = DAILY_FILE) -> float | None:
-    """Read the calendar-day Rotterdam value (observed or carried) for runtime use."""
+def read_daily_values(path: str | Path = DAILY_FILE) -> dict[date, float]:
+    values: dict[date, float] = {}
     with Path(path).open("r", encoding="utf-8-sig", newline="") as fh:
         reader = csv.DictReader(fh)
         required = {"date", VALUE_COLUMN}
@@ -86,10 +87,14 @@ def read_daily_value(day: date, path: str | Path = DAILY_FILE) -> float | None:
             raise ValueError(f"UFIP daily CSV missing columns: {sorted(missing)}")
         for row in reader:
             raw_date = (row.get("date") or "").strip()
-            if raw_date and date.fromisoformat(raw_date[:10]) == day:
-                raw_value = (row.get(VALUE_COLUMN) or "").strip()
-                return None if not raw_value else float(raw_value)
-    return None
+            raw_value = (row.get(VALUE_COLUMN) or "").strip()
+            if raw_date and raw_value:
+                values[date.fromisoformat(raw_date[:10])] = float(raw_value)
+    return values
+
+
+def read_daily_value(day: date, path: str | Path = DAILY_FILE) -> float | None:
+    return read_daily_values(path).get(day)
 
 
 def constraining_on(
@@ -98,18 +103,40 @@ def constraining_on(
     observed_file: str | Path = OBSERVED_FILE,
     daily_file: str | Path = DAILY_FILE,
 ) -> bool:
-    """Return whether Rotterdam is on the admissible side of Corsica R2.
-
-    The agreed rule is deliberately simple: Rotterdam >= R2 keeps stale prices
-    potentially admissible in the double-cap case; Rotterdam < R2 excludes them.
-    Missing daily data fails closed by raising an error. This result never changes
-    the independently detected shield-effective status.
-    """
+    """Current-day comparison only: Rotterdam >= R2."""
     value = read_daily_value(day, daily_file)
     if value is None:
         raise ValueError(f"Missing Rotterdam daily value for {day.isoformat()}")
     r2 = float(calibration_2026(observed_file)["r2"])
     return float(value) >= r2
+
+
+def admissible_since(
+    start_day: date,
+    end_day: date,
+    *,
+    observed_file: str | Path = OBSERVED_FILE,
+    daily_file: str | Path = DAILY_FILE,
+) -> bool:
+    """Persistent R2 guard from stale-price expiry through the calculation day.
+
+    True means Rotterdam never went below R2 over the complete calendar window.
+    A single day below R2 makes the old price ineligible for the rest of that
+    declaration's life. The next target-fuel declaration changes the caller's
+    start_day and therefore resets this guard naturally.
+    """
+    if end_day < start_day:
+        raise ValueError("end_day must be >= start_day")
+    values = read_daily_values(daily_file)
+    r2 = float(calibration_2026(observed_file)["r2"])
+    d = start_day
+    while d <= end_day:
+        if d not in values:
+            raise ValueError(f"Missing Rotterdam daily value for {d.isoformat()}")
+        if float(values[d]) < r2:
+            return False
+        d += timedelta(days=1)
+    return True
 
 
 def _sha256(path: Path) -> str:
@@ -134,7 +161,7 @@ def shared_metadata(
         "daily_sha256": _sha256(daily_path),
         "value_column": VALUE_COLUMN,
         "corsica_calibration": calibration_2026(observed_path),
-        "runtime_rule": "rotterdam_eur_l >= R2 keeps stale double-cap prices potentially admissible; R2 does not define shield effectiveness",
+        "runtime_rule": "after normal 45-day expiry, any Rotterdam day below R2 excludes the stale double-cap price until the target fuel is declared again; R2 does not define shield effectiveness",
     }
 
 
