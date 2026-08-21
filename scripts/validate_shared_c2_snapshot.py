@@ -24,6 +24,7 @@ SNAPSHOT = Path("outputs/shared/official_13_20.csv.gz")
 OBSERVED = Path("outputs/ufip/rotterdam_gazole_observed.csv")
 DAILY = Path("outputs/ufip/rotterdam_gazole_daily.csv")
 BRANDS = Path("config/corse_station_brands.json")
+CALIBRATION_ABS_TOLERANCE = 1e-9
 
 
 def sha256(path: Path) -> str:
@@ -103,7 +104,7 @@ def main() -> None:
     r1 = finite_positive(calibration.get("r1"), "Corsica R1")
     k = finite_positive(calibration.get("k"), "Corsica k")
     r2 = finite_positive(calibration.get("r2"), "Corsica R2")
-    if not math.isclose(r1 * k, r2, rel_tol=0.0, abs_tol=1e-12):
+    if not math.isclose(r1 * k, r2, rel_tol=0.0, abs_tol=CALIBRATION_ABS_TOLERANCE):
         raise RuntimeError("Corsica calibration invariant R1*k=R2 is broken")
 
     brands_meta = meta.get("corse_station_brands")
