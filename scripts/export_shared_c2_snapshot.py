@@ -5,8 +5,9 @@ This runs inside the carburantscorse1 workflow and exports raw official declarat
 it never applies c1's forward-fill or aggregation rules to the shared snapshot.
 
 The same manifest binds together the official snapshot, the single UFIP Rotterdam Gazole
-download owned by C1, the canonical prepared Corsica calibration and the canonical Corsica
-station-brand registry. C2 can therefore pin one C1 release and consume a coherent set.
+download owned by C1, the canonical prepared Corsica calibration, explicit effective-shield
+cap phases, and the canonical Corsica station-brand registry. C2 can therefore pin one C1
+release and consume a coherent set.
 """
 from __future__ import annotations
 
@@ -25,6 +26,7 @@ import xml.etree.ElementTree as ET
 import update_data_v2 as core
 import bouclier_detector
 import rotterdam_corse_shared_v2
+import shield_phase_v2
 
 DEPARTMENTS = {"13", "20"}
 FUELS = {"Gazole", "SP95", "E10"}
@@ -204,6 +206,7 @@ def main() -> None:
         raise RuntimeError(f"Shared snapshot misses a required fuel: {dict(by_fuel)}")
 
     digest = hashlib.sha256(output.read_bytes()).hexdigest()
+    bouclier = shield_phase_v2.with_cap_phases(bouclier_detector.metadata(max(years)))
     metadata = {
         "schema": SCHEMA,
         "generated_at": datetime.now(timezone.utc).isoformat(),
@@ -220,7 +223,7 @@ def main() -> None:
         "asset": output.name,
         "producer": "FredericP555/carburantscorse1",
         "method": "raw official declarations only; no c1 forward-fill or aggregation",
-        "bouclier": bouclier_detector.metadata(max(years)),
+        "bouclier": bouclier,
         "rotterdam": rotterdam_corse_shared_v2.shared_metadata(),
         "corse_station_brands": brand_registry_metadata(),
     }
