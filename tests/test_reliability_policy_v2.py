@@ -85,18 +85,18 @@ class T(unittest.TestCase):
         d = self.ev(**self.shield_args(activity_by_fuel={'E10': datetime(2026, 8, 18)}))
         self.assertFalse(d.eligible)
 
-    def test_double_cap_uses_rotterdam_not_cross_liveness(self):
+    def test_double_cap_uses_r2_lock_not_cross_liveness(self):
         args = self.shield_args(
             activity_by_fuel={'Gazole': datetime(2026, 8, 18)},
             gazole_price=2.25,
             gazole_cap=2.25,
             sp95_price=1.99,
             sp95_cap=1.99,
-            rotterdam_gazole_constraining=False,
+            rotterdam_stale_price_admissible=False,
         )
         d = self.ev(**args)
         self.assertFalse(d.eligible)
-        self.assertEqual(d.reason, 'double_plafond_rotterdam_sous_r2')
+        self.assertEqual(d.reason, 'double_plafond_rotterdam_verrouille')
 
     def test_double_cap_rotterdam_admissible(self):
         d = self.ev(**self.shield_args(
@@ -104,7 +104,7 @@ class T(unittest.TestCase):
             gazole_cap=2.25,
             sp95_price=1.99,
             sp95_cap=1.99,
-            rotterdam_gazole_constraining=True,
+            rotterdam_stale_price_admissible=True,
         ))
         self.assertTrue(d.eligible)
         self.assertEqual(d.reason, 'double_plafond_rotterdam_admissible')
@@ -137,7 +137,7 @@ class T(unittest.TestCase):
             gazole_cap=2.25,
             sp95_price=1.99,
             sp95_cap=1.99,
-            rotterdam_gazole_constraining=True,
+            rotterdam_stale_price_admissible=True,
         ))
         self.assertFalse(d.eligible)
 
