@@ -1,0 +1,161 @@
+name: C1 V2 output activation preflight
+
+on:
+  push:
+    branches: [prep/v2-production-activation]
+    paths:
+      - .github/workflows/v2-output-activation-preflight.yml
+      - scripts/build_c1_v2_candidate.py
+      - scripts/reliability_policy_v2.py
+      - scripts/r2_guard_v2.py
+      - scripts/rotterdam_corse_shared_v2.py
+      - scripts/shield_phase_v2.py
+      - a4c_common/corse_brand.py
+      - a4c_common/price_math.py
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  PYTHONPATH: .:scripts
+
+jobs:
+  preflight:
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - run: pip install -r requirements.txt
+
+      - name: Unit tests
+        run: python -m unittest discover -s tests -v
+
+      - name: Compile V2 production sources
+        run: python -m compileall -q a4c_common scripts
+
+      - name: Fetch C1-owned UFIP Rotterdam series
+        run: python scripts/fetch_ufip.py --output-dir outputs/ufip
+
+      - name: Refresh only new or unresolved Corsica station IDs in workspace
+        run: >-
+          python scripts/resolve_corse_station_brands_incremental.py
+          --output config/corse_station_brands.json
+          --corrections config/corse_station_brand_corrections.csv
+
+      - name: Build controlled C1 V2 transition candidate
+        run: python scripts/build_c1_v2_candidate.py
+
+      - name: Verify protected history and R2 availability
+        run: |
+          python - <<'PY'
+          import json
+          from datetime import date, timedelta
+          from pathlib import Path
+          import update_data_v2 as core
+          baseline=json.loads(Path('data.json').read_text(encoding='utf-8'))
+          candidate=json.loads(Path('outputs/c1-v2-candidate.json').read_text(encoding='utf-8'))
+          summary=json.loads(Path('outputs/c1-v2-summary.json').read_text(encoding='utf-8'))
+          switch=date(2026,7,23); switch_off=(switch-core.ORIGIN).days
+          if int(summary.get('engine',{}).get('r2',{}).get('unavailable',0)) != 0:
+              raise SystemExit('R2 unavailable in C1 V2 preflight')
+          if int(summary.get('rewritten_daily_rows_total',0)) <= 0:
+              raise SystemExit('Initial C1 transition rewrote no daily rows')
+          protected=0
+          for fuel in ('G','S'):
+              for region in ['corse','moy_regions']+core.REGIONS:
+                  old=baseline[fuel][region]['d']; new=candidate[fuel][region]['d']
+                  op=[p for p in old if p[0] < switch_off]; np=[p for p in new if p[0] < switch_off]
+                  if op != np:
+                      raise SystemExit(f'Protected C1 daily history changed: {fuel}/{region}')
+                  protected += len(op)
+          print('Protected daily rows verified:', protected)
+          PY
+
+      - name: Measure C1 boundary effect Corse minus mainland mean
+        run: |
+          python - <<'PY'
+          import json, statistics
+          from datetime import date, timedelta
+          from pathlib import Path
+          import update_data_v2 as core
+          old=json.loads(Path('data.json').read_text(encoding='utf-8'))
+          new=json.loads(Path('outputs/c1-v2-candidate.json').read_text(encoding='utf-8'))
+          start=(date(2026,7,23)-core.ORIGIN).days
+          result={}
+          for fuel in ('G','S'):
+              left_c={p[0]:p[2] for p in old[fuel]['corse']['d'] if p[0]>=start}
+              left_m={p[0]:p[2] for p in old[fuel]['moy_regions']['d'] if p[0]>=start}
+              right_c={p[0]:p[2] for p in new[fuel]['corse']['d'] if p[0]>=start}
+              right_m={p[0]:p[2] for p in new[fuel]['moy_regions']['d'] if p[0]>=start}
+              days=sorted(set(left_c)&set(left_m)&set(right_c)&set(right_m))
+              vals=[]; rows=[]
+              for off in days:
+                  before=(left_c[off]-left_m[off])*100
+                  after=(right_c[off]-right_m[off])*100
+                  delta=after-before
+                  vals.append(delta)
+                  rows.append({'date':str(core.ORIGIN+timedelta(days=off)),'current_gap_c_l':round(before,3),'v2_gap_c_l':round(after,3),'delta_c_l':round(delta,3)})
+              result[fuel]={'periods':len(vals),'mean_signed_delta_c_l':round(statistics.fmean(vals),3) if vals else 0.0,'median_signed_delta_c_l':round(statistics.median(vals),3) if vals else 0.0,'min_delta_c_l':round(min(vals),3) if vals else 0.0,'max_delta_c_l':round(max(vals),3) if vals else 0.0,'negative_days':sum(v<0 for v in vals),'zero_days':sum(abs(v)<1e-12 for v in vals),'positive_days':sum(v>0 for v in vals),'first':rows[0] if rows else None,'last':rows[-1] if rows else None}
+          Path('outputs/c1-v2-boundary.json').write_text(json.dumps(result,ensure_ascii=False,indent=2),encoding='utf-8')
+          print(json.dumps(result,ensure_ascii=False,indent=2))
+          PY
+
+      - name: Prove recurring no-new-data run is idempotent
+        run: |
+          end=$(python -c "import json; print(json.load(open('outputs/c1-v2-summary.json'))['target_end'])")
+          python scripts/build_c1_v2_candidate.py \
+            --input outputs/c1-v2-candidate.json \
+            --output outputs/c1-v2-recurring-candidate.json \
+            --summary outputs/c1-v2-recurring-summary.json \
+            --end "$end"
+          cmp outputs/c1-v2-candidate.json outputs/c1-v2-recurring-candidate.json
+          python - <<'PY'
+          import json
+          o=json.load(open('outputs/c1-v2-recurring-summary.json'))
+          if o.get('initial_transition') is not False or o.get('rewritten_daily_rows_total') != 0 or o.get('added_daily_rows_total') != 0:
+              raise SystemExit('Recurring C1 V2 no-op contract failed')
+          print('Recurring C1 V2 no-op: exact')
+          PY
+
+      - name: Assert production file untouched
+        run: git diff --exit-code -- data.json
+
+      - name: Write concise summary
+        if: always()
+        run: |
+          python - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import json, pathlib
+          print('## C1 V2 output activation preflight')
+          s=pathlib.Path('outputs/c1-v2-summary.json')
+          b=pathlib.Path('outputs/c1-v2-boundary.json')
+          if s.exists():
+              o=json.loads(s.read_text())
+              r=o.get('engine',{}).get('r2',{})
+              print(f"- Transition: daily {o.get('daily_switch_date')}, weekly {o.get('weekly_switch_date')}, monthly {o.get('monthly_switch')}")
+              print(f"- Protected daily rows: {o.get('protected_daily_rows_verified',0):,}")
+              print(f"- Rewritten daily rows: {o.get('rewritten_daily_rows_total',0):,}; appended: {o.get('added_daily_rows_total',0):,}")
+              print(f"- R2 calls: {r.get('calls',0):,}; unavailable: {r.get('unavailable',0):,}")
+          if b.exists():
+              o=json.loads(b.read_text())
+              for fuel in ('G','S'):
+                  x=o.get(fuel,{})
+                  print(f"- {fuel} Corse-mainland boundary mean Δ: {x.get('mean_signed_delta_c_l',0):+.3f} c/L; range {x.get('min_delta_c_l',0):+.3f}…{x.get('max_delta_c_l',0):+.3f}")
+          print('- Production modified: no')
+          PY
+
+      - name: Upload C1 V2 output preflight
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: c1-v2-output-activation-preflight
+          path: |
+            outputs/c1-v2-candidate.json
+            outputs/c1-v2-summary.json
+            outputs/c1-v2-boundary.json
+            outputs/c1-v2-recurring-summary.json
+          retention-days: 14
