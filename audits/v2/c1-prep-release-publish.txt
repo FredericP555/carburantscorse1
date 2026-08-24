@@ -1,0 +1,10 @@
+target=1bb8dc3874db800d5d64eb0893afd7bd1c354d19
+tag=a4c-prep-v2-20260824T132552Z-32732454998
+gh version 2.97.0 (2026-07-31)
+https://github.com/cli/cli/releases/tag/v2.97.0
+github.com
+  ✓ Logged in to github.com account github-actions[bot] (GH_TOKEN)
+  - Active account: true
+  - Git operations protocol: https
+  - Token: ghs_*************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************************
+https://github.com/FredericP555/carburantscorse1/releases/tag/a4c-prep-v2-20260824T132552Z-32732454998
