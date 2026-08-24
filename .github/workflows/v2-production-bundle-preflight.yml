@@ -1,0 +1,74 @@
+name: V2 production bundle preflight
+
+on:
+  push:
+    branches: [prep/v2-production-activation]
+    paths:
+      - .github/workflows/v2-production-bundle-preflight.yml
+      - scripts/export_shared_c2_snapshot.py
+      - scripts/fetch_ufip.py
+      - scripts/rotterdam_corse_shared_v2.py
+      - scripts/shield_phase_v2.py
+      - scripts/validate_shared_c2_snapshot.py
+      - a4c_common/ufip.py
+      - requirements.txt
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  PYTHONPATH: .
+
+concurrency:
+  group: c1-v2-production-bundle-preflight
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - run: pip install -r requirements.txt
+
+      - name: Unit tests
+        run: python -m unittest discover -s tests -v
+
+      - name: Compile Python sources
+        run: python -m compileall -q a4c_common scripts
+
+      - name: Fetch single shared UFIP Rotterdam source
+        run: python scripts/fetch_ufip.py --output-dir outputs/ufip
+
+      - name: Build complete production-shape C1 bundle
+        run: python scripts/export_shared_c2_snapshot.py
+
+      - name: Validate complete C1 to C2 contract
+        run: python scripts/validate_shared_c2_snapshot.py
+
+      - name: Publish isolated preproduction release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag="a4c-preprod-v2-$(date -u +%Y%m%dT%H%M%SZ)-${GITHUB_RUN_ID}"
+          target="$(git rev-parse HEAD)"
+          gh release create "$tag" \
+            outputs/shared/official_13_20.csv.gz \
+            outputs/shared/official_13_20_events.csv.gz \
+            outputs/shared/official_13_20.meta.json \
+            outputs/ufip/rotterdam_gazole_observed.csv \
+            outputs/ufip/rotterdam_gazole_daily.csv \
+            config/corse_station_brands.json \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$target" \
+            --title "A4C V2 production bundle preflight" \
+            --notes "Preproduction-only release mirroring the intended C1 production contract. No data.json or Pages mutation." \
+            --latest=false
+          echo "Published $tag targeting $target" >> "$GITHUB_STEP_SUMMARY"
+          echo "Production modified: no" >> "$GITHUB_STEP_SUMMARY"
