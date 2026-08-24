@@ -1,0 +1,70 @@
+name: Track guarded C1 V2 prep release
+
+on:
+  push:
+    branches: [prep/v2-live-dry-run]
+    paths: [.github/workflows/v2-prep-release-probe.yml]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  EXPECTED_PREP_SHA: 44be367940b8aecefaf5a6a03ca2ef474527fbc2
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Wait for guarded prep release and record contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p audits/v2
+          for attempt in $(seq 1 15); do
+            curl -fsSL \
+              -H 'Accept: application/vnd.github+json' \
+              -H 'X-GitHub-Api-Version: 2022-11-28' \
+              'https://api.github.com/repos/FredericP555/carburantscorse1/releases?per_page=30' \
+              > /tmp/releases.json
+            if EXPECTED="$EXPECTED_PREP_SHA" python - <<'PY'
+          import json, os, pathlib, sys
+          rows=json.loads(pathlib.Path('/tmp/releases.json').read_text())
+          expected=os.environ['EXPECTED']
+          candidates=[r for r in rows if not r.get('draft') and str(r.get('tag_name','')).startswith('a4c-prep-v2-') and str(r.get('target_commitish',''))==expected]
+          candidates.sort(key=lambda r: str(r.get('published_at') or r.get('created_at') or ''), reverse=True)
+          if not candidates:
+              raise SystemExit(1)
+          r=candidates[0]
+          out={
+              'tag': r.get('tag_name'),
+              'target_commitish': r.get('target_commitish'),
+              'published_at': r.get('published_at'),
+              'prerelease': bool(r.get('prerelease')),
+              'assets': sorted(a.get('name') for a in r.get('assets',[]) if a.get('name')),
+          }
+          pathlib.Path('audits/v2/c1-prep-release.json').write_text(json.dumps(out,ensure_ascii=False,indent=2),encoding='utf-8')
+          print(json.dumps(out,ensure_ascii=False))
+          PY
+            then
+              break
+            fi
+            if [ "$attempt" -eq 15 ]; then
+              echo "No guarded prep release targeting $EXPECTED_PREP_SHA" >&2
+              exit 1
+            fi
+            echo "Release not ready ($attempt/15); waiting 60s"
+            sleep 60
+          done
+
+      - name: Persist prep release audit
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add audits/v2/c1-prep-release.json
+          git diff --cached --quiet && exit 0
+          git commit -m "Record guarded C1 V2 prep release"
+          git push origin "HEAD:${GITHUB_REF_NAME}"
