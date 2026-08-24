@@ -1,3 +1,5 @@
+"""Regression tests for the C1 V2 event guard used by the production preflight."""
+
 import unittest
 from datetime import date, datetime
 
