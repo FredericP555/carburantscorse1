@@ -1,0 +1,701 @@
+{
+  "status": "dry-run-only",
+  "production_modified": false,
+  "window": {
+    "retroactive_start": "2026-01-01",
+    "end": "2026-08-23",
+    "prospective_switch_date": "2026-08-24",
+    "prospective_switch_source": {
+      "source": "main-data.json",
+      "last_published_day": "2026-08-23",
+      "switch_date": "2026-08-24"
+    }
+  },
+  "source": {
+    "official_parse_counts": {
+      "activity": 8173549,
+      "target_Gazole": 2413236,
+      "target_SP95": 478272
+    },
+    "ufip_last_observed_date": "2026-08-21",
+    "corsica_registry_station_count": 124
+  },
+  "engine_calls": {
+    "evaluate_station_days": 4514820,
+    "r2_calls": 450,
+    "r2_true": 144,
+    "r2_false": 306,
+    "r2_unavailable": 0,
+    "r2_errors": {}
+  },
+  "eligibility": {
+    "reason_counts": {
+      "mainland/Gazole/normal_45j": 2119015,
+      "mainland/SP95/prix_ou_date_absent_invalide": 1352902,
+      "mainland/SP95/normal_45j": 713920,
+      "mainland/SP95/continent_age_absolu_90j": 122581,
+      "mainland/Gazole/continent_age_absolu_90j": 55290,
+      "mainland/Gazole/prix_ou_date_absent_invalide": 32184,
+      "mainland/SP95/continent_vivacite_bornee": 29086,
+      "corsica/Gazole/normal_45j": 27748,
+      "corsica/SP95/normal_45j": 25846,
+      "mainland/Gazole/continent_sans_vivacite_recente": 20515,
+      "mainland/SP95/continent_sans_vivacite_recente": 9546,
+      "corsica/SP95/ancien_hors_exception": 1875,
+      "corsica/Gazole/ancien_hors_exception": 1269,
+      "mainland/Gazole/continent_vivacite_bornee": 1031,
+      "corsica/SP95/bouclier_vivacite_45j_renouvelee": 740,
+      "corsica/Gazole/prix_ou_date_absent_invalide": 330,
+      "corsica/SP95/prix_ou_date_absent_invalide": 330,
+      "corsica/SP95/double_plafond_rotterdam_verrouille": 306,
+      "corsica/SP95/double_plafond_rotterdam_admissible": 142,
+      "corsica/SP95/ancien_pas_au_plafond": 79,
+      "corsica/SP95/bouclier_sans_vivacite_recente": 50,
+      "corsica/Gazole/ancien_pas_au_plafond": 15,
+      "corsica/Gazole/pas_de_resurrection_a_entree_plafond": 11,
+      "corsica/SP95/pas_de_resurrection_a_entree_plafond": 7,
+      "corsica/Gazole/double_plafond_rotterdam_admissible": 2
+    },
+    "changed_station_days": {
+      "mainland/SP95/False->True": 28168,
+      "mainland/Gazole/False->True": 949,
+      "corsica/SP95/False->True": 867,
+      "mainland/Gazole/True->False": 614,
+      "mainland/SP95/True->False": 290,
+      "corsica/SP95/True->False": 60,
+      "corsica/Gazole/True->False": 44,
+      "corsica/Gazole/False->True": 1
+    }
+  },
+  "baseline_validation_against_main": {
+    "Gazole": {
+      "common_periods": 235,
+      "changed_periods": 227,
+      "max_abs_delta_c_l": 0.784,
+      "median_abs_delta_c_l": 0.323,
+      "largest_changes": [
+        {
+          "period": "2026-02-01",
+          "actuel_c_l": 15.7,
+          "v2_c_l": 16.484,
+          "delta_c_l": 0.784
+        },
+        {
+          "period": "2026-02-06",
+          "actuel_c_l": 16.7,
+          "v2_c_l": 17.464,
+          "delta_c_l": 0.764
+        },
+        {
+          "period": "2026-01-15",
+          "actuel_c_l": 15.8,
+          "v2_c_l": 16.56,
+          "delta_c_l": 0.76
+        },
+        {
+          "period": "2026-02-14",
+          "actuel_c_l": 17.4,
+          "v2_c_l": 18.153,
+          "delta_c_l": 0.753
+        },
+        {
+          "period": "2026-01-27",
+          "actuel_c_l": 15.6,
+          "v2_c_l": 16.351,
+          "delta_c_l": 0.751
+        },
+        {
+          "period": "2026-02-20",
+          "actuel_c_l": 18.7,
+          "v2_c_l": 19.449,
+          "delta_c_l": 0.749
+        },
+        {
+          "period": "2026-01-04",
+          "actuel_c_l": 17.6,
+          "v2_c_l": 18.34,
+          "delta_c_l": 0.74
+        },
+        {
+          "period": "2026-01-29",
+          "actuel_c_l": 15.8,
+          "v2_c_l": 16.537,
+          "delta_c_l": 0.737
+        },
+        {
+          "period": "2026-02-03",
+          "actuel_c_l": 15.8,
+          "v2_c_l": 16.532,
+          "delta_c_l": 0.732
+        },
+        {
+          "period": "2026-02-05",
+          "actuel_c_l": 16.5,
+          "v2_c_l": 17.231,
+          "delta_c_l": 0.731
+        },
+        {
+          "period": "2026-01-01",
+          "actuel_c_l": 19.7,
+          "v2_c_l": 20.42,
+          "delta_c_l": 0.72
+        },
+        {
+          "period": "2026-02-08",
+          "actuel_c_l": 16.9,
+          "v2_c_l": 17.618,
+          "delta_c_l": 0.718
+        }
+      ]
+    },
+    "SP95": {
+      "common_periods": 235,
+      "changed_periods": 222,
+      "max_abs_delta_c_l": 0.66,
+      "median_abs_delta_c_l": 0.066,
+      "largest_changes": [
+        {
+          "period": "2026-03-27",
+          "actuel_c_l": 16.1,
+          "v2_c_l": 16.76,
+          "delta_c_l": 0.66
+        },
+        {
+          "period": "2026-03-26",
+          "actuel_c_l": 15.4,
+          "v2_c_l": 16.038,
+          "delta_c_l": 0.638
+        },
+        {
+          "period": "2026-03-30",
+          "actuel_c_l": 17.2,
+          "v2_c_l": 17.822,
+          "delta_c_l": 0.622
+        },
+        {
+          "period": "2026-03-28",
+          "actuel_c_l": 16.2,
+          "v2_c_l": 16.801,
+          "delta_c_l": 0.601
+        },
+        {
+          "period": "2026-03-29",
+          "actuel_c_l": 16.1,
+          "v2_c_l": 16.699,
+          "delta_c_l": 0.599
+        },
+        {
+          "period": "2026-03-25",
+          "actuel_c_l": 12.2,
+          "v2_c_l": 12.676,
+          "delta_c_l": 0.476
+        },
+        {
+          "period": "2026-03-31",
+          "actuel_c_l": 17.1,
+          "v2_c_l": 17.56,
+          "delta_c_l": 0.46
+        },
+        {
+          "period": "2026-04-01",
+          "actuel_c_l": 15.4,
+          "v2_c_l": 15.83,
+          "delta_c_l": 0.43
+        },
+        {
+          "period": "2026-04-02",
+          "actuel_c_l": 13.1,
+          "v2_c_l": 13.364,
+          "delta_c_l": 0.264
+        },
+        {
+          "period": "2026-04-06",
+          "actuel_c_l": 11.2,
+          "v2_c_l": 11.432,
+          "delta_c_l": 0.232
+        },
+        {
+          "period": "2026-02-01",
+          "actuel_c_l": 16.7,
+          "v2_c_l": 16.924,
+          "delta_c_l": 0.224
+        },
+        {
+          "period": "2026-03-04",
+          "actuel_c_l": 13.4,
+          "v2_c_l": 13.177,
+          "delta_c_l": -0.223
+        }
+      ]
+    }
+  },
+  "comparison": {
+    "NOUVELLE_REGLE_RETROACTIVE_vs_ACTUEL": {
+      "Gazole/daily": {
+        "common_periods": 235,
+        "changed_periods": 129,
+        "max_abs_delta_c_l": 0.193,
+        "median_abs_delta_c_l": 0.019,
+        "largest_changes": [
+          {
+            "period": "2026-05-26",
+            "actuel_c_l": 18.277,
+            "v2_c_l": 18.084,
+            "delta_c_l": -0.193
+          },
+          {
+            "period": "2026-05-30",
+            "actuel_c_l": 17.15,
+            "v2_c_l": 16.97,
+            "delta_c_l": -0.18
+          },
+          {
+            "period": "2026-06-20",
+            "actuel_c_l": 22.901,
+            "v2_c_l": 22.742,
+            "delta_c_l": -0.159
+          },
+          {
+            "period": "2026-06-19",
+            "actuel_c_l": 23.764,
+            "v2_c_l": 23.617,
+            "delta_c_l": -0.147
+          },
+          {
+            "period": "2026-06-04",
+            "actuel_c_l": 20.04,
+            "v2_c_l": 19.93,
+            "delta_c_l": -0.11
+          },
+          {
+            "period": "2026-07-12",
+            "actuel_c_l": 15.462,
+            "v2_c_l": 15.358,
+            "delta_c_l": -0.104
+          },
+          {
+            "period": "2026-01-18",
+            "actuel_c_l": 16.56,
+            "v2_c_l": 16.456,
+            "delta_c_l": -0.104
+          },
+          {
+            "period": "2026-01-15",
+            "actuel_c_l": 16.56,
+            "v2_c_l": 16.464,
+            "delta_c_l": -0.097
+          },
+          {
+            "period": "2026-01-05",
+            "actuel_c_l": 18.217,
+            "v2_c_l": 18.12,
+            "delta_c_l": -0.097
+          },
+          {
+            "period": "2026-02-14",
+            "actuel_c_l": 18.153,
+            "v2_c_l": 18.059,
+            "delta_c_l": -0.094
+          },
+          {
+            "period": "2026-01-08",
+            "actuel_c_l": 17.824,
+            "v2_c_l": 17.732,
+            "delta_c_l": -0.092
+          },
+          {
+            "period": "2026-02-06",
+            "actuel_c_l": 17.464,
+            "v2_c_l": 17.543,
+            "delta_c_l": 0.078
+          }
+        ]
+      },
+      "Gazole/weekly": {
+        "common_periods": 34,
+        "changed_periods": 21,
+        "max_abs_delta_c_l": 0.088,
+        "median_abs_delta_c_l": 0.017,
+        "largest_changes": [
+          {
+            "period": "2026-05-25",
+            "actuel_c_l": 18.687,
+            "v2_c_l": 18.599,
+            "delta_c_l": -0.088
+          },
+          {
+            "period": "2026-06-15",
+            "actuel_c_l": 23.132,
+            "v2_c_l": 23.072,
+            "delta_c_l": -0.06
+          },
+          {
+            "period": "2026-06-01",
+            "actuel_c_l": 20.333,
+            "v2_c_l": 20.296,
+            "delta_c_l": -0.037
+          },
+          {
+            "period": "2026-01-05",
+            "actuel_c_l": 17.822,
+            "v2_c_l": 17.788,
+            "delta_c_l": -0.034
+          },
+          {
+            "period": "2026-01-12",
+            "actuel_c_l": 16.847,
+            "v2_c_l": 16.816,
+            "delta_c_l": -0.031
+          },
+          {
+            "period": "2026-07-06",
+            "actuel_c_l": 17.378,
+            "v2_c_l": 17.351,
+            "delta_c_l": -0.027
+          },
+          {
+            "period": "2026-04-06",
+            "actuel_c_l": 3.502,
+            "v2_c_l": 3.527,
+            "delta_c_l": 0.026
+          },
+          {
+            "period": "2026-06-29",
+            "actuel_c_l": 20.414,
+            "v2_c_l": 20.391,
+            "delta_c_l": -0.023
+          },
+          {
+            "period": "2026-06-08",
+            "actuel_c_l": 20.702,
+            "v2_c_l": 20.681,
+            "delta_c_l": -0.021
+          },
+          {
+            "period": "2026-06-22",
+            "actuel_c_l": 21.752,
+            "v2_c_l": 21.734,
+            "delta_c_l": -0.018
+          },
+          {
+            "period": "2026-04-13",
+            "actuel_c_l": 8.805,
+            "v2_c_l": 8.822,
+            "delta_c_l": 0.017
+          },
+          {
+            "period": "2026-01-19",
+            "actuel_c_l": 16.286,
+            "v2_c_l": 16.272,
+            "delta_c_l": -0.015
+          }
+        ]
+      },
+      "Gazole/monthly": {
+        "common_periods": 8,
+        "changed_periods": 6,
+        "max_abs_delta_c_l": 0.033,
+        "median_abs_delta_c_l": 0.014,
+        "largest_changes": [
+          {
+            "period": "2026-06",
+            "actuel_c_l": 21.443,
+            "v2_c_l": 21.409,
+            "delta_c_l": -0.033
+          },
+          {
+            "period": "2026-05",
+            "actuel_c_l": 15.58,
+            "v2_c_l": 15.558,
+            "delta_c_l": -0.022
+          },
+          {
+            "period": "2026-01",
+            "actuel_c_l": 17.14,
+            "v2_c_l": 17.125,
+            "delta_c_l": -0.015
+          },
+          {
+            "period": "2026-04",
+            "actuel_c_l": 9.221,
+            "v2_c_l": 9.234,
+            "delta_c_l": 0.013
+          },
+          {
+            "period": "2026-07",
+            "actuel_c_l": 16.285,
+            "v2_c_l": 16.275,
+            "delta_c_l": -0.01
+          },
+          {
+            "period": "2026-03",
+            "actuel_c_l": 7.334,
+            "v2_c_l": 7.34,
+            "delta_c_l": 0.006
+          }
+        ]
+      },
+      "SP95/daily": {
+        "common_periods": 235,
+        "changed_periods": 229,
+        "max_abs_delta_c_l": 0.672,
+        "median_abs_delta_c_l": 0.239,
+        "largest_changes": [
+          {
+            "period": "2026-05-26",
+            "actuel_c_l": 3.264,
+            "v2_c_l": 3.936,
+            "delta_c_l": 0.672
+          },
+          {
+            "period": "2026-05-05",
+            "actuel_c_l": 5.251,
+            "v2_c_l": 5.845,
+            "delta_c_l": 0.594
+          },
+          {
+            "period": "2026-05-04",
+            "actuel_c_l": 5.656,
+            "v2_c_l": 6.248,
+            "delta_c_l": 0.592
+          },
+          {
+            "period": "2026-05-06",
+            "actuel_c_l": 4.968,
+            "v2_c_l": 5.557,
+            "delta_c_l": 0.589
+          },
+          {
+            "period": "2026-05-03",
+            "actuel_c_l": 6.392,
+            "v2_c_l": 6.963,
+            "delta_c_l": 0.572
+          },
+          {
+            "period": "2026-05-02",
+            "actuel_c_l": 6.418,
+            "v2_c_l": 6.983,
+            "delta_c_l": 0.566
+          },
+          {
+            "period": "2026-04-28",
+            "actuel_c_l": 7.334,
+            "v2_c_l": 7.899,
+            "delta_c_l": 0.565
+          },
+          {
+            "period": "2026-04-30",
+            "actuel_c_l": 6.696,
+            "v2_c_l": 7.257,
+            "delta_c_l": 0.561
+          },
+          {
+            "period": "2026-05-07",
+            "actuel_c_l": 4.761,
+            "v2_c_l": 5.321,
+            "delta_c_l": 0.559
+          },
+          {
+            "period": "2026-05-01",
+            "actuel_c_l": 6.71,
+            "v2_c_l": 7.263,
+            "delta_c_l": 0.553
+          },
+          {
+            "period": "2026-05-10",
+            "actuel_c_l": 4.919,
+            "v2_c_l": 5.471,
+            "delta_c_l": 0.552
+          },
+          {
+            "period": "2026-04-29",
+            "actuel_c_l": 7.084,
+            "v2_c_l": 7.637,
+            "delta_c_l": 0.552
+          }
+        ]
+      },
+      "SP95/weekly": {
+        "common_periods": 34,
+        "changed_periods": 34,
+        "max_abs_delta_c_l": 0.569,
+        "median_abs_delta_c_l": 0.211,
+        "largest_changes": [
+          {
+            "period": "2026-05-04",
+            "actuel_c_l": 5.05,
+            "v2_c_l": 5.619,
+            "delta_c_l": 0.569
+          },
+          {
+            "period": "2026-04-27",
+            "actuel_c_l": 6.899,
+            "v2_c_l": 7.452,
+            "delta_c_l": 0.553
+          },
+          {
+            "period": "2026-04-20",
+            "actuel_c_l": 8.168,
+            "v2_c_l": 8.688,
+            "delta_c_l": 0.519
+          },
+          {
+            "period": "2026-05-18",
+            "actuel_c_l": 3.823,
+            "v2_c_l": 4.311,
+            "delta_c_l": 0.489
+          },
+          {
+            "period": "2026-05-25",
+            "actuel_c_l": 4.027,
+            "v2_c_l": 4.515,
+            "delta_c_l": 0.488
+          },
+          {
+            "period": "2026-05-11",
+            "actuel_c_l": 5.174,
+            "v2_c_l": 5.651,
+            "delta_c_l": 0.476
+          },
+          {
+            "period": "2026-04-06",
+            "actuel_c_l": 10.344,
+            "v2_c_l": 10.797,
+            "delta_c_l": 0.453
+          },
+          {
+            "period": "2026-04-13",
+            "actuel_c_l": 7.712,
+            "v2_c_l": 8.162,
+            "delta_c_l": 0.449
+          },
+          {
+            "period": "2026-03-30",
+            "actuel_c_l": 14.198,
+            "v2_c_l": 14.625,
+            "delta_c_l": 0.428
+          },
+          {
+            "period": "2026-08-17",
+            "actuel_c_l": 6.845,
+            "v2_c_l": 7.255,
+            "delta_c_l": 0.41
+          },
+          {
+            "period": "2026-03-23",
+            "actuel_c_l": 14.081,
+            "v2_c_l": 14.486,
+            "delta_c_l": 0.405
+          },
+          {
+            "period": "2026-03-16",
+            "actuel_c_l": 11.699,
+            "v2_c_l": 12.071,
+            "delta_c_l": 0.372
+          }
+        ]
+      },
+      "SP95/monthly": {
+        "common_periods": 8,
+        "changed_periods": 7,
+        "max_abs_delta_c_l": 0.511,
+        "median_abs_delta_c_l": 0.317,
+        "largest_changes": [
+          {
+            "period": "2026-05",
+            "actuel_c_l": 4.711,
+            "v2_c_l": 5.222,
+            "delta_c_l": 0.511
+          },
+          {
+            "period": "2026-04",
+            "actuel_c_l": 9.211,
+            "v2_c_l": 9.688,
+            "delta_c_l": 0.477
+          },
+          {
+            "period": "2026-03",
+            "actuel_c_l": 13.648,
+            "v2_c_l": 13.974,
+            "delta_c_l": 0.326
+          },
+          {
+            "period": "2026-08",
+            "actuel_c_l": 7.277,
+            "v2_c_l": 7.595,
+            "delta_c_l": 0.317
+          },
+          {
+            "period": "2026-02",
+            "actuel_c_l": 17.012,
+            "v2_c_l": 17.043,
+            "delta_c_l": 0.03
+          },
+          {
+            "period": "2026-06",
+            "actuel_c_l": 9.508,
+            "v2_c_l": 9.532,
+            "delta_c_l": 0.024
+          },
+          {
+            "period": "2026-01",
+            "actuel_c_l": 17.117,
+            "v2_c_l": 17.104,
+            "delta_c_l": -0.013
+          }
+        ]
+      }
+    },
+    "NOUVELLE_REGLE_PROSPECTIVE_vs_ACTUEL": {
+      "Gazole/daily": {
+        "common_periods": 235,
+        "changed_periods": 0,
+        "max_abs_delta_c_l": 0.0,
+        "median_abs_delta_c_l": 0.0,
+        "largest_changes": []
+      },
+      "Gazole/weekly": {
+        "common_periods": 34,
+        "changed_periods": 0,
+        "max_abs_delta_c_l": 0.0,
+        "median_abs_delta_c_l": 0.0,
+        "largest_changes": []
+      },
+      "Gazole/monthly": {
+        "common_periods": 8,
+        "changed_periods": 0,
+        "max_abs_delta_c_l": 0.0,
+        "median_abs_delta_c_l": 0.0,
+        "largest_changes": []
+      },
+      "SP95/daily": {
+        "common_periods": 235,
+        "changed_periods": 0,
+        "max_abs_delta_c_l": 0.0,
+        "median_abs_delta_c_l": 0.0,
+        "largest_changes": []
+      },
+      "SP95/weekly": {
+        "common_periods": 34,
+        "changed_periods": 0,
+        "max_abs_delta_c_l": 0.0,
+        "median_abs_delta_c_l": 0.0,
+        "largest_changes": []
+      },
+      "SP95/monthly": {
+        "common_periods": 8,
+        "changed_periods": 0,
+        "max_abs_delta_c_l": 0.0,
+        "median_abs_delta_c_l": 0.0,
+        "largest_changes": []
+      }
+    }
+  },
+  "known_reserves": [
+    "the current C1 baseline intentionally reproduces its inclusive J+45 carry so the V2 J+45 boundary is measurable rather than silently rewritten",
+    "rupture intervals are not yet wired into this dry-run decision input",
+    "independent closure/inactivity evidence is not yet wired into this dry-run decision input",
+    "pre-2026 R2 retrospective analysis is deliberately not simulated until episode-appropriate historical Rotterdam data are assembled",
+    "2022 is not an effective-shield year and will never be backfilled with shield logic"
+  ]
+}
