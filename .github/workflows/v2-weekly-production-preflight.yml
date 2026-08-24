@@ -1,0 +1,83 @@
+name: C1 V2 weekly production preflight
+
+on:
+  push:
+    branches: [prep/v2-production-activation]
+    paths:
+      - .github/workflows/v2-weekly-production-preflight.yml
+      - .github/workflows/update-weekly.yml
+      - scripts/promote_c1_v2_candidate.py
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  PYTHONPATH: .:scripts
+
+jobs:
+  preflight:
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: Unit tests
+        run: python -m unittest discover -s tests -v
+      - name: Compile V2 production sources
+        run: python -m compileall -q a4c_common scripts
+      - name: Prefetch official annual ZIPs once with retries
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p .cache/official-fuel
+          current_year=$(python -c "from datetime import date; print(date.today().year)")
+          previous_year=$((current_year-1))
+          for year in "$previous_year" "$current_year"; do
+            if [ "$year" = "$current_year" ]; then url="https://donnees.roulez-eco.fr/opendata/annee"; else url="https://donnees.roulez-eco.fr/opendata/annee/$year"; fi
+            out=".cache/official-fuel/PrixCarburants_annuel_${year}.zip"
+            tmp="${out}.tmp"
+            curl --fail --location --retry 5 --retry-delay 5 --retry-all-errors --connect-timeout 30 --max-time 600 --user-agent "A4C-observatoire/2.0" "$url" -o "$tmp"
+            mv "$tmp" "$out"
+          done
+          python - <<'PY'
+          import io, zipfile
+          from datetime import date
+          from pathlib import Path
+          y=date.today().year
+          for year in (y-1,y):
+              raw=Path(f'.cache/official-fuel/PrixCarburants_annuel_{year}.zip').read_bytes()
+              with zipfile.ZipFile(io.BytesIO(raw)) as zf:
+                  assert any(n.lower().endswith('.xml') for n in zf.namelist())
+              print(year, len(raw))
+          PY
+      - name: Fetch C1-owned UFIP Rotterdam source
+        run: python scripts/fetch_ufip.py --output-dir outputs/ufip
+      - name: Refresh Corsica station registry in workspace
+        run: >-
+          python scripts/resolve_corse_station_brands_incremental.py
+          --output config/corse_station_brands.json
+          --corrections config/corse_station_brand_corrections.csv
+      - name: Build C1 V2 candidate
+        run: python scripts/build_c1_v2_candidate.py
+      - name: Verify independent C1 promotion guard
+        run: python scripts/promote_c1_v2_candidate.py
+      - name: Build complete shared V2 bundle
+        run: python scripts/export_shared_c2_snapshot.py
+      - name: Validate complete shared V2 bundle
+        run: python scripts/validate_shared_c2_snapshot.py
+      - name: Assert production data untouched
+        run: git diff --exit-code -- data.json
+      - name: Upload production-shape audit
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: c1-v2-weekly-production-preflight
+          path: |
+            outputs/c1-v2-summary.json
+            outputs/shared/official_13_20.meta.json
+          retention-days: 14
