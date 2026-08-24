@@ -44,24 +44,52 @@ jobs:
         run: python scripts/validate_shared_c2_snapshot.py
 
       - name: Publish isolated prerelease for C2 dry-run
+        id: release
         env:
           GH_TOKEN: ${{ github.token }}
+        shell: bash
         run: |
+          set -euo pipefail
+          mkdir -p audits/v2
           tag="a4c-prep-v2-$(date -u +%Y%m%dT%H%M%SZ)-${GITHUB_RUN_ID}"
           target="$(git rev-parse HEAD)"
-          gh release create "$tag" \
-            outputs/shared/official_13_20.csv.gz \
-            outputs/shared/official_13_20.meta.json \
-            outputs/ufip/rotterdam_gazole_observed.csv \
-            outputs/ufip/rotterdam_gazole_daily.csv \
-            config/corse_station_brands.json \
-            --repo "$GITHUB_REPOSITORY" \
-            --target "$target" \
-            --title "A4C V2 prep bundle $(date -u +%Y-%m-%d)" \
-            --notes "PREP ONLY — isolated real-data bundle for V2 dry-run. Not consumed by production C2." \
-            --prerelease \
-            --latest=false
-          echo "Prep release: $tag" >> "$GITHUB_STEP_SUMMARY"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "target=$target" >> "$GITHUB_OUTPUT"
+          {
+            echo "target=$target"
+            echo "tag=$tag"
+            gh --version
+            gh auth status
+            gh release create "$tag" \
+              outputs/shared/official_13_20.csv.gz \
+              outputs/shared/official_13_20.meta.json \
+              outputs/ufip/rotterdam_gazole_observed.csv \
+              outputs/ufip/rotterdam_gazole_daily.csv \
+              config/corse_station_brands.json \
+              --repo "$GITHUB_REPOSITORY" \
+              --target "$target" \
+              --title "A4C V2 prep bundle $(date -u +%Y-%m-%d)" \
+              --notes "PREP ONLY — isolated real-data bundle for V2 dry-run. Not consumed by production C2." \
+              --prerelease
+          } 2>&1 | tee audits/v2/c1-prep-release-publish.txt
+          gh api "repos/$GITHUB_REPOSITORY/releases/tags/$tag" \
+            --jq '{tag:.tag_name,target_commitish:.target_commitish,published_at:.published_at,prerelease:.prerelease,assets:[.assets[].name]}' \
+            > audits/v2/c1-prep-release.json
+          echo "Prep release: $tag target=$target" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Persist release publication audit
+        if: always()
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          mkdir -p audits/v2
+          test -f audits/v2/c1-prep-release-publish.txt || echo "release step did not produce a log" > audits/v2/c1-prep-release-publish.txt
+          git add audits/v2/c1-prep-release-publish.txt
+          test ! -f audits/v2/c1-prep-release.json || git add audits/v2/c1-prep-release.json
+          git diff --cached --quiet && exit 0
+          git commit -m "Record C1 V2 prep release publication"
+          git push origin "HEAD:${GITHUB_REF_NAME}"
 
       - name: Upload prep bundle audit artifact
         if: always()
@@ -74,4 +102,6 @@ jobs:
             outputs/ufip/rotterdam_gazole_observed.csv
             outputs/ufip/rotterdam_gazole_daily.csv
             config/corse_station_brands.json
+            audits/v2/c1-prep-release-publish.txt
+            audits/v2/c1-prep-release.json
           retention-days: 14
