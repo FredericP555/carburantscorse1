@@ -1,0 +1,62 @@
+name: Build C1 prep bundle with official events
+
+on:
+  push:
+    branches: [prep/45d-shield-policy]
+    paths: [.github/workflows/v2-events-prep-bundle.yml]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: c1-v2-events-prep-bundle
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - run: pip install -r requirements.txt
+
+      - name: Unit tests
+        run: python -m unittest discover -s tests -v
+
+      - name: Compile Python sources
+        run: python -m compileall -q a4c_common scripts
+
+      - name: Fetch shared UFIP Rotterdam source
+        run: python scripts/fetch_ufip.py --output-dir outputs/ufip
+
+      - name: Build price snapshot plus official rupture and closure intervals
+        run: python scripts/export_shared_c2_snapshot.py
+
+      - name: Validate complete prep release contract
+        run: python scripts/validate_shared_c2_snapshot.py
+
+      - name: Publish isolated prep release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag="a4c-prep-v2-events-$(date -u +%Y%m%dT%H%M%SZ)-${GITHUB_RUN_ID}"
+          target="$(git rev-parse HEAD)"
+          gh release create "$tag" \
+            outputs/shared/official_13_20.csv.gz \
+            outputs/shared/official_13_20_events.csv.gz \
+            outputs/shared/official_13_20.meta.json \
+            outputs/ufip/rotterdam_gazole_observed.csv \
+            outputs/ufip/rotterdam_gazole_daily.csv \
+            config/corse_station_brands.json \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$target" \
+            --title "A4C V2 prep bundle with official event guards" \
+            --notes "Isolated prep-only C1 bundle: raw 13/20 price declarations plus official rupture and fermeture intervals parsed from the same annual XML source. No production publication." \
+            --latest=false
+          echo "Published $tag targeting $target" >> "$GITHUB_STEP_SUMMARY"
