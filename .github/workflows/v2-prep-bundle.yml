@@ -1,0 +1,73 @@
+name: Build V2 prep bundle
+
+on:
+  push:
+    branches: [prep/v2-live-dry-run]
+    paths: [.github/workflows/v2-prep-bundle.yml]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  bundle:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - run: pip install -r requirements.txt
+
+      - name: Unit tests
+        run: python -m unittest discover -s tests -v
+
+      - name: Fetch UFIP Rotterdam Gazole once
+        run: python scripts/fetch_ufip.py --output-dir outputs/ufip
+
+      - name: Refresh only new or unresolved Corsica station identities
+        run: >-
+          python scripts/resolve_corse_station_brands_incremental.py
+          --output config/corse_station_brands.json
+          --corrections config/corse_station_brand_corrections.csv
+
+      - name: Build complete prep shared bundle
+        run: python scripts/export_shared_c2_snapshot.py
+
+      - name: Validate prep shared bundle
+        run: python scripts/validate_shared_c2_snapshot.py
+
+      - name: Publish isolated prerelease for C2 dry-run
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="a4c-prep-v2-$(date -u +%Y%m%dT%H%M%SZ)-${GITHUB_RUN_ID}"
+          target="$(git rev-parse HEAD)"
+          gh release create "$tag" \
+            outputs/shared/official_13_20.csv.gz \
+            outputs/shared/official_13_20.meta.json \
+            outputs/ufip/rotterdam_gazole_observed.csv \
+            outputs/ufip/rotterdam_gazole_daily.csv \
+            config/corse_station_brands.json \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$target" \
+            --title "A4C V2 prep bundle $(date -u +%Y-%m-%d)" \
+            --notes "PREP ONLY — isolated real-data bundle for V2 dry-run. Not consumed by production C2." \
+            --prerelease \
+            --latest=false
+          echo "Prep release: $tag" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload prep bundle audit artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: c1-v2-prep-bundle
+          path: |
+            outputs/shared/official_13_20.csv.gz
+            outputs/shared/official_13_20.meta.json
+            outputs/ufip/rotterdam_gazole_observed.csv
+            outputs/ufip/rotterdam_gazole_daily.csv
+            config/corse_station_brands.json
+          retention-days: 14
