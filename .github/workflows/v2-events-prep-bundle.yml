@@ -25,6 +25,7 @@ jobs:
           cache: pip
       - run: pip install -r requirements.txt
 
+      # Prep-only validation: nothing below writes production data.json or Pages.
       - name: Unit tests
         run: python -m unittest discover -s tests -v
 
