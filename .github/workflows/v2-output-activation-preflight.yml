@@ -41,6 +41,38 @@ jobs:
       - name: Fetch C1-owned UFIP Rotterdam series
         run: python scripts/fetch_ufip.py --output-dir outputs/ufip
 
+      - name: Prefetch official annual ZIPs with retries
+        run: |
+          set -euo pipefail
+          mkdir -p .cache/official-fuel
+          for year in 2025 2026; do
+            if [ "$year" = "2026" ]; then
+              url="https://donnees.roulez-eco.fr/opendata/annee"
+            else
+              url="https://donnees.roulez-eco.fr/opendata/annee/$year"
+            fi
+            out=".cache/official-fuel/PrixCarburants_annuel_${year}.zip"
+            tmp="${out}.tmp"
+            echo "Prefetching $url"
+            curl --fail --location \
+              --retry 5 --retry-delay 5 --retry-all-errors \
+              --connect-timeout 30 --max-time 600 \
+              --user-agent "A4C-observatoire/1.3" \
+              "$url" -o "$tmp"
+            mv "$tmp" "$out"
+          done
+          python - <<'PY'
+          import io, zipfile
+          from pathlib import Path
+          for year in (2025, 2026):
+              p=Path(f'.cache/official-fuel/PrixCarburants_annuel_{year}.zip')
+              raw=p.read_bytes()
+              with zipfile.ZipFile(io.BytesIO(raw)) as zf:
+                  if not any(n.lower().endswith('.xml') for n in zf.namelist()):
+                      raise SystemExit(f'Official ZIP {year} contains no XML')
+              print(f'Validated official ZIP {year}: {len(raw):,} bytes')
+          PY
+
       - name: Refresh only new or unresolved Corsica station IDs in workspace
         run: >-
           python scripts/resolve_corse_station_brands_incremental.py
