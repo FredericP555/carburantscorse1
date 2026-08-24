@@ -1,6 +1,6 @@
 name: Build V2 prep bundle
 
-# Probe revision: UFIP stale-gap guard enabled.
+# Isolated prep workflow: never modifies production data.json or production releases.
 on:
   push:
     branches: [prep/v2-live-dry-run]
@@ -9,6 +9,9 @@ on:
 
 permissions:
   contents: write
+
+env:
+  PYTHONPATH: .
 
 jobs:
   bundle:
