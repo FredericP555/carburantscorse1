@@ -9,6 +9,9 @@ on:
 permissions:
   contents: write
 
+env:
+  PYTHONPATH: .
+
 concurrency:
   group: c1-v2-events-prep-bundle
   cancel-in-progress: false
