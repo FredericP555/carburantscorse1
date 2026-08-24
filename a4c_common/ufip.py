@@ -13,6 +13,9 @@ from openpyxl import load_workbook
 UFIP_CUSTOM_URL = "https://valeurs.ufip.fr/datas/custom"
 USER_AGENT = "A4C-observatoires/2.0 (+public-data research)"
 GAZOLE_HEADER_PREFIX = "GAZOLE (Rotterdam)"
+# A quotation may be carried over a normal weekend or isolated holiday, but never
+# across a stale publication gap such as the missing UFIP week observed on 24 Aug 2026.
+MAX_CARRY_DAYS = 3
 
 
 def _format_date(value: date) -> str:
@@ -94,7 +97,12 @@ def fetch_rotterdam_gazole(
 
 
 def expand_daily(observations: pd.DataFrame, start_date: date, end_date: date) -> pd.DataFrame:
-    """Forward-fill weekends/holidays from the last UFIP observation."""
+    """Carry UFIP only across short calendar gaps; stale gaps remain explicitly missing.
+
+    ``MAX_CARRY_DAYS=3`` covers a normal weekend and a weekend plus one isolated
+    holiday. A longer absence is treated as missing source data, so downstream R2
+    and margin calculations fail closed instead of manufacturing a quotation.
+    """
     if end_date < start_date:
         raise ValueError("end_date must be >= start_date")
     calendar = pd.DataFrame({"date": pd.date_range(start_date, end_date, freq="D").date})
@@ -108,6 +116,24 @@ def expand_daily(observations: pd.DataFrame, start_date: date, end_date: date) -
         merged["rotterdam_observed"] = False
     else:
         merged["rotterdam_observed"] = merged["rotterdam_observed"].eq(True)
-    merged["rotterdam_eur_l"] = pd.to_numeric(merged.get("rotterdam_eur_l"), errors="coerce").ffill()
-    merged["rotterdam_carried"] = merged["rotterdam_eur_l"].notna() & ~merged["rotterdam_observed"]
+
+    raw_values = pd.to_numeric(merged.get("rotterdam_eur_l"), errors="coerce")
+    observed_dates = pd.Series(pd.NaT, index=merged.index, dtype="datetime64[ns]")
+    observed_dates.loc[merged["rotterdam_observed"]] = pd.to_datetime(
+        merged.loc[merged["rotterdam_observed"], "date"]
+    ).to_numpy()
+    last_observed = observed_dates.ffill()
+    calendar_dates = pd.to_datetime(merged["date"])
+    carry_age = (calendar_dates - last_observed).dt.days
+
+    carried_values = raw_values.ffill()
+    too_old = carry_age > MAX_CARRY_DAYS
+    carried_values.loc[too_old] = float("nan")
+    merged["rotterdam_eur_l"] = carried_values
+    merged["rotterdam_carried"] = (
+        merged["rotterdam_eur_l"].notna()
+        & ~merged["rotterdam_observed"]
+        & carry_age.between(1, MAX_CARRY_DAYS, inclusive="both")
+    )
+    merged["rotterdam_carry_age_days"] = carry_age.astype("Int64")
     return merged
