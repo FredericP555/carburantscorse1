@@ -10,7 +10,7 @@ permissions:
   contents: write
 
 env:
-  EXPECTED_PREP_SHA: 44be367940b8aecefaf5a6a03ca2ef474527fbc2
+  EXPECTED_PREP_SHA: 6c04e20aebefecc77a463bc442e14dd4a1afd799
 
 jobs:
   probe:
@@ -31,7 +31,7 @@ jobs:
               'https://api.github.com/repos/FredericP555/carburantscorse1/releases?per_page=30' \
               > /tmp/releases.json
             if EXPECTED="$EXPECTED_PREP_SHA" python - <<'PY'
-          import json, os, pathlib, sys
+          import json, os, pathlib
           rows=json.loads(pathlib.Path('/tmp/releases.json').read_text())
           expected=os.environ['EXPECTED']
           candidates=[r for r in rows if not r.get('draft') and str(r.get('tag_name','')).startswith('a4c-prep-v2-') and str(r.get('target_commitish',''))==expected]
