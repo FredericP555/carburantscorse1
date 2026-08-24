@@ -61,9 +61,16 @@ jobs:
           done
 
       - name: Persist prep release audit
+        shell: bash
         run: |
+          set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          cp audits/v2/c1-prep-release.json /tmp/c1-prep-release.json
+          git fetch origin "$GITHUB_REF_NAME"
+          git reset --hard "origin/$GITHUB_REF_NAME"
+          mkdir -p audits/v2
+          cp /tmp/c1-prep-release.json audits/v2/c1-prep-release.json
           git add audits/v2/c1-prep-release.json
           git diff --cached --quiet && exit 0
           git commit -m "Record guarded C1 V2 prep release"
