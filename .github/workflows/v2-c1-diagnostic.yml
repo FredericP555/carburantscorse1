@@ -1,0 +1,57 @@
+name: Diagnose C1 V2 prep failure
+
+on:
+  push:
+    branches: [prep/v2-live-dry-run]
+    paths: [.github/workflows/v2-c1-diagnostic.yml]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+
+      - name: Run diagnostic commands without stopping
+        shell: bash
+        run: |
+          set +e
+          mkdir -p audits/v2 outputs/ufip outputs/shared
+          REPORT=audits/v2/c1-prep-diagnostic.txt
+          : > "$REPORT"
+          run_cmd() {
+            name="$1"; shift
+            echo "===== $name =====" | tee -a "$REPORT"
+            "$@" > /tmp/c1-diag.log 2>&1
+            code=$?
+            tail -n 120 /tmp/c1-diag.log | tee -a "$REPORT"
+            echo "EXIT_CODE=$code" | tee -a "$REPORT"
+            echo | tee -a "$REPORT"
+          }
+          run_cmd "pip install" python -m pip install -r requirements.txt
+          run_cmd "unit tests" python -m unittest discover -s tests -v
+          run_cmd "fetch UFIP" python scripts/fetch_ufip.py --output-dir outputs/ufip
+          run_cmd "resolve Corsica brands" python scripts/resolve_corse_station_brands_incremental.py --output config/corse_station_brands.json --corrections config/corse_station_brand_corrections.csv
+          run_cmd "build shared bundle" python scripts/export_shared_c2_snapshot.py
+          run_cmd "validate shared bundle" python scripts/validate_shared_c2_snapshot.py
+          echo "Diagnostic completed" | tee -a "$REPORT"
+
+      - name: Persist diagnostic report
+        if: always()
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          test -f audits/v2/c1-prep-diagnostic.txt || echo "diagnostic report missing" > audits/v2/c1-prep-diagnostic.txt
+          git add audits/v2/c1-prep-diagnostic.txt
+          git diff --cached --quiet && exit 0
+          git commit -m "Store C1 V2 prep failure diagnostic"
+          git push origin "HEAD:${GITHUB_REF_NAME}"
