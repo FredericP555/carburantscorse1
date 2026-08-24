@@ -7,6 +7,7 @@ It validates integrity *and* the business contract needed by C2.
 from __future__ import annotations
 
 from datetime import date
+import csv
 import gzip
 import hashlib
 import json
@@ -21,6 +22,7 @@ from rotterdam_corse_shared_v2 import (
 
 META = Path("outputs/shared/official_13_20.meta.json")
 SNAPSHOT = Path("outputs/shared/official_13_20.csv.gz")
+EVENTS = Path("outputs/shared/official_13_20_events.csv.gz")
 OBSERVED = Path("outputs/ufip/rotterdam_gazole_observed.csv")
 DAILY = Path("outputs/ufip/rotterdam_gazole_daily.csv")
 BRANDS = Path("config/corse_station_brands.json")
@@ -66,8 +68,43 @@ def validate_phases(bouclier: dict) -> None:
                 raise RuntimeError(f"Overlapping cap phases for {fuel}")
 
 
+def validate_events(meta: dict) -> None:
+    event_meta = meta.get("official_events")
+    if not isinstance(event_meta, dict):
+        raise RuntimeError("Missing official rupture/closure event metadata")
+    if event_meta.get("schema") != "a4c-official-13-20-events-v1":
+        raise RuntimeError("Unexpected official event schema")
+    if event_meta.get("asset") != EVENTS.name:
+        raise RuntimeError("Unexpected official event asset name")
+    if sha256(EVENTS) != event_meta.get("sha256"):
+        raise RuntimeError("Official event asset SHA mismatch")
+
+    required = {"source_year", "station_id", "department", "event_kind", "fuel", "event_type", "started_at", "ended_at", "start_date", "end_date"}
+    rows = 0
+    kinds = set()
+    with gzip.open(EVENTS, "rt", encoding="utf-8", newline="") as fh:
+        reader = csv.DictReader(fh)
+        if not reader.fieldnames or not required.issubset(set(reader.fieldnames)):
+            raise RuntimeError("Official event asset has an invalid CSV schema")
+        for row in reader:
+            rows += 1
+            kind = str(row.get("event_kind") or "")
+            if kind not in {"rupture", "fermeture"}:
+                raise RuntimeError(f"Unexpected official event kind: {kind!r}")
+            date.fromisoformat(str(row.get("start_date")))
+            end_date = str(row.get("end_date") or "").strip()
+            if end_date:
+                date.fromisoformat(end_date)
+            kinds.add(kind)
+    if rows != int(event_meta.get("rows", -1)):
+        raise RuntimeError("Official event row count mismatch")
+    declared = {str(k) for k, v in (event_meta.get("rows_by_kind") or {}).items() if int(v) > 0}
+    if kinds != declared:
+        raise RuntimeError("Official event kind counts are inconsistent with asset")
+
+
 def main() -> None:
-    for path in (META, SNAPSHOT, OBSERVED, DAILY, BRANDS):
+    for path in (META, SNAPSHOT, EVENTS, OBSERVED, DAILY, BRANDS):
         if not path.exists() or path.stat().st_size == 0:
             raise RuntimeError(f"Required shared asset missing/empty: {path}")
 
@@ -83,6 +120,8 @@ def main() -> None:
     with gzip.open(SNAPSHOT, "rt", encoding="utf-8") as fh:
         if not fh.readline().strip():
             raise RuntimeError("Shared snapshot gzip has no CSV header")
+
+    validate_events(meta)
 
     rotterdam = meta.get("rotterdam")
     if not isinstance(rotterdam, dict) or rotterdam.get("single_download") is not True:
@@ -120,7 +159,7 @@ def main() -> None:
     if not isinstance(bouclier, dict):
         raise RuntimeError("Missing effective-shield metadata")
     validate_phases(bouclier)
-    print("Shared C1 -> C2 release contract: OK")
+    print("Shared C1 -> C2 release contract with official events: OK")
 
 
 if __name__ == "__main__":
