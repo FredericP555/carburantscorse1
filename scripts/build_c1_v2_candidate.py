@@ -163,8 +163,10 @@ class EventGuard:
                 continue
             if kind == "rupture": self.ruptures[(sid, fuel)].append((started.date(), end_day))
             else: self.closures[sid].append((started.date(), end_day))
-        for values in self.ruptures.values(): values.sort()
-        for values in self.closures.values(): values.sort()
+        # Open-ended intervals have end=None. Sort only on the start date so an
+        # explicit-ended interval with the same start never compares date to None.
+        for values in self.ruptures.values(): values.sort(key=lambda interval: interval[0])
+        for values in self.closures.values(): values.sort(key=lambda interval: interval[0])
         self.stats["event_rows_unique"] = len(seen)
 
     @staticmethod
