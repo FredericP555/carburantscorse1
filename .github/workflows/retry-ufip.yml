@@ -1,0 +1,194 @@
+name: Retry UFIP after weekly update
+
+on:
+  schedule:
+    # Monday retries at 11:17, 14:17, 17:17 and 20:17 Europe/Paris.
+    # Two UTC slots per local time cover CET/CEST; the gate below keeps only one.
+    - cron: '17 9 * * 1'
+    - cron: '17 10 * * 1'
+    - cron: '17 12 * * 1'
+    - cron: '17 13 * * 1'
+    - cron: '17 15 * * 1'
+    - cron: '17 16 * * 1'
+    - cron: '17 18 * * 1'
+    - cron: '17 19 * * 1'
+    # Final safety check Tuesday at 07:17 Europe/Paris.
+    - cron: '17 5 * * 2'
+    - cron: '17 6 * * 2'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: write
+
+env:
+  PYTHONPATH: .:scripts
+
+jobs:
+  retry:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Select the Europe/Paris retry slot
+        id: clock
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          EVENT_SCHEDULE: ${{ github.event.schedule }}
+        run: |
+          python - <<'PY'
+          import os
+          from datetime import datetime
+          from zoneinfo import ZoneInfo
+
+          if os.environ.get('EVENT_NAME') == 'workflow_dispatch':
+              selected = True
+          else:
+              schedule = os.environ.get('EVENT_SCHEDULE', '')
+              try:
+                  minute, hour, _, _, dow = schedule.split()
+                  minute = int(minute)
+                  hour = int(hour)
+                  dow = int(dow)
+              except Exception:
+                  minute, hour, dow = -1, -1, -1
+
+              offset = int(datetime.now(ZoneInfo('Europe/Paris')).utcoffset().total_seconds() // 3600)
+              shifted = hour + offset
+              local_hour = shifted % 24
+              local_dow = (dow + (shifted // 24)) % 7
+              selected = (
+                  minute == 17
+                  and (
+                      (local_dow == 1 and local_hour in {11, 14, 17, 20})
+                      or (local_dow == 2 and local_hour == 7)
+                  )
+              )
+
+          with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as fh:
+              fh.write(f"selected={'true' if selected else 'false'}\n")
+          print('Retry slot selected:', selected)
+          PY
+
+      - name: Checkout current production main
+        if: steps.clock.outputs.selected == 'true'
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          fetch-depth: 1
+
+      - name: Set up Python
+        if: steps.clock.outputs.selected == 'true'
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+
+      - name: Install dependencies
+        if: steps.clock.outputs.selected == 'true'
+        run: pip install -r requirements.txt
+
+      - name: Check whether the previous week is now UFIP-complete
+        if: steps.clock.outputs.selected == 'true'
+        id: ufip
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p outputs/ufip-baseline outputs/ufip-live
+
+          tag=$(gh release list \
+            --repo FredericP555/carburantscorse1 \
+            --limit 50 \
+            --json tagName,publishedAt \
+            --jq '[.[] | select(.tagName | startswith("a4c-v2-shared-"))] | sort_by(.publishedAt) | reverse | .[0].tagName // ""')
+          if [ -z "$tag" ]; then
+            echo "No validated C1 V2 release found." >&2
+            exit 1
+          fi
+
+          gh release download "$tag" \
+            --repo FredericP555/carburantscorse1 \
+            --pattern rotterdam_gazole_observed.csv \
+            --dir outputs/ufip-baseline \
+            --clobber
+
+          python scripts/fetch_ufip.py --output-dir outputs/ufip-live
+
+          BASELINE_TAG="$tag" python - <<'PY'
+          import os
+          from datetime import datetime, timedelta
+          from pathlib import Path
+          from zoneinfo import ZoneInfo
+
+          import pandas as pd
+
+          baseline = pd.read_csv(Path('outputs/ufip-baseline/rotterdam_gazole_observed.csv'))
+          live = pd.read_csv(Path('outputs/ufip-live/rotterdam_gazole_observed.csv'))
+
+          today = datetime.now(ZoneInfo('Europe/Paris')).date()
+          current_monday = today - timedelta(days=today.weekday())
+          week_start = current_monday - timedelta(days=7)
+          week_end = week_start + timedelta(days=6)
+
+          def dates(df):
+              if df.empty or 'date' not in df.columns or 'rotterdam_eur_l' not in df.columns:
+                  return pd.Series(dtype='datetime64[ns]')
+              d = pd.to_datetime(df['date'], errors='coerce').dt.normalize()
+              mask = df['rotterdam_eur_l'].notna() & d.between(pd.Timestamp(week_start), pd.Timestamp(week_end))
+              return d[mask].dropna().drop_duplicates().sort_values()
+
+          def complete(df):
+              d = dates(df)
+              if len(d) < 3:
+                  return False
+              return (
+                  d.iloc[0] <= pd.Timestamp(week_start) + pd.Timedelta(days=1)
+                  and d.iloc[-1] >= pd.Timestamp(week_start) + pd.Timedelta(days=3)
+              )
+
+          def max_date(df):
+              if df.empty or 'date' not in df.columns:
+                  return None
+              d = pd.to_datetime(df['date'], errors='coerce').dropna()
+              return d.max().date().isoformat() if not d.empty else None
+
+          baseline_complete = complete(baseline)
+          live_complete = complete(live)
+          ready = (not baseline_complete) and live_complete
+
+          out = os.environ['GITHUB_OUTPUT']
+          with open(out, 'a', encoding='utf-8') as fh:
+              fh.write(f"ready={'true' if ready else 'false'}\n")
+              fh.write(f"week_start={week_start.isoformat()}\n")
+              fh.write(f"week_end={week_end.isoformat()}\n")
+              fh.write(f"baseline_max={max_date(baseline) or ''}\n")
+              fh.write(f"live_max={max_date(live) or ''}\n")
+
+          print(f"Previous week: {week_start} -> {week_end}")
+          print(f"Baseline release: {os.environ['BASELINE_TAG']}")
+          print(f"Baseline UFIP max: {max_date(baseline)}; complete: {baseline_complete}")
+          print(f"Live UFIP max: {max_date(live)}; complete: {live_complete}")
+          print(f"Full C1 rerun required: {ready}")
+          PY
+
+      - name: Dispatch full C1 production update
+        if: steps.clock.outputs.selected == 'true' && steps.ufip.outputs.ready == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh workflow run update-weekly.yml \
+            --repo FredericP555/carburantscorse1 \
+            --ref "${{ github.event.repository.default_branch }}"
+          echo "Fresh UFIP now completes the missing week; full C1 update dispatched."
+
+      - name: Write retry summary
+        if: steps.clock.outputs.selected == 'true' && always()
+        run: |
+          {
+            echo '## UFIP conditional retry'
+            echo "- Week checked: ${{ steps.ufip.outputs.week_start }} → ${{ steps.ufip.outputs.week_end }}"
+            echo "- Baseline observed through: ${{ steps.ufip.outputs.baseline_max }}"
+            echo "- Live UFIP observed through: ${{ steps.ufip.outputs.live_max }}"
+            echo "- Full C1 rerun dispatched: ${{ steps.ufip.outputs.ready == 'true' }}"
+          } >> "$GITHUB_STEP_SUMMARY"
