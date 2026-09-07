@@ -16,6 +16,7 @@ on:
 permissions:
   contents: read
   actions: write
+  pages: write
 
 jobs:
   watchdog:
@@ -33,7 +34,9 @@ jobs:
           from datetime import datetime
           from zoneinfo import ZoneInfo
 
-          if os.environ.get('EVENT_NAME') in {'workflow_dispatch', 'push'}:
+          event = os.environ.get('EVENT_NAME', '')
+          dry_run = event == 'push'
+          if event in {'workflow_dispatch', 'push'}:
               selected = True
           else:
               schedule = os.environ.get('EVENT_SCHEDULE', '')
@@ -53,10 +56,12 @@ jobs:
 
           with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as fh:
               fh.write(f"selected={'true' if selected else 'false'}\n")
+              fh.write(f"dry_run={'true' if dry_run else 'false'}\n")
           print('Watchdog slot selected:', selected)
+          print('Dry-run self-test:', dry_run)
           PY
 
-      - name: Check for a validated C1 release today
+      - name: Evaluate C1 business publication state
         if: steps.clock.outputs.selected == 'true'
         id: state
         env:
@@ -92,47 +97,117 @@ jobs:
           PY
           )
 
-          active=$(gh run list \
+          active_update=$(gh run list \
             --repo FredericP555/carburantscorse1 \
             --workflow update-weekly.yml \
             --limit 20 \
             --json status \
             --jq '[.[] | select(.status != "completed")] | length')
 
+          active_verify=$(gh run list \
+            --repo FredericP555/carburantscorse1 \
+            --workflow verify-c1-publication.yml \
+            --limit 20 \
+            --json status \
+            --jq '[.[] | select(.status != "completed")] | length')
+
+          business_run=""
           if [ -n "$latest_today" ]; then
-            dispatch=false
-            reason="validated C1 release already exists today: $latest_today"
-          elif [ "$active" -gt 0 ]; then
-            dispatch=false
-            reason="a full C1 update is already queued or running"
-          else
-            dispatch=true
-            reason="no validated C1 release exists today and no full C1 update is active"
+            rm -rf /tmp/c1-business-receipts
+            mkdir -p /tmp/c1-business-receipts
+            while read -r run_id; do
+              [ -z "$run_id" ] && continue
+              dir="/tmp/c1-business-receipts/$run_id"
+              mkdir -p "$dir"
+              if gh run download "$run_id" \
+                   --repo FredericP555/carburantscorse1 \
+                   --name c1-business-success-receipt \
+                   --dir "$dir" >/dev/null 2>&1; then
+                receipt="$dir/c1-business-success.json"
+                if [ -f "$receipt" ] && jq -e --arg tag "$latest_today" \
+                     '.status == "business-success" and .release_tag == $tag and .pages_sha256 == .expected_sha256 and .release_data_sha256 == .expected_sha256' \
+                     "$receipt" >/dev/null; then
+                  business_run="$run_id"
+                  break
+                fi
+              fi
+            done < <(gh run list \
+              --repo FredericP555/carburantscorse1 \
+              --workflow verify-c1-publication.yml \
+              --status success \
+              --limit 20 \
+              --json databaseId \
+              --jq '.[].databaseId')
           fi
 
-          echo "dispatch=$dispatch" >> "$GITHUB_OUTPUT"
+          if [ -z "$latest_today" ]; then
+            if [ "$active_update" -gt 0 ]; then
+              action="wait"
+              reason="no C1 release exists today, but a full production update is already active"
+            else
+              action="full-update"
+              reason="no validated C1 release exists today"
+            fi
+          elif [ -n "$business_run" ]; then
+            action="none"
+            reason="C1 business success is proven for today's latest release: $latest_today (verifier run $business_run)"
+          elif [ "$active_update" -gt 0 ] || [ "$active_verify" -gt 0 ]; then
+            action="wait"
+            reason="publication exists but production or end-to-end verification is still active"
+          else
+            action="repair-publication"
+            reason="C1 release exists but no matching end-to-end business-success receipt proves what Pages serves"
+          fi
+
+          echo "action=$action" >> "$GITHUB_OUTPUT"
           echo "release_today=$latest_today" >> "$GITHUB_OUTPUT"
-          echo "active_runs=$active" >> "$GITHUB_OUTPUT"
+          echo "business_run=$business_run" >> "$GITHUB_OUTPUT"
+          echo "active_updates=$active_update" >> "$GITHUB_OUTPUT"
+          echo "active_verifiers=$active_verify" >> "$GITHUB_OUTPUT"
           echo "reason=$reason" >> "$GITHUB_OUTPUT"
           echo "$reason"
 
       - name: Dispatch full C1 production update
-        if: steps.clock.outputs.selected == 'true' && steps.state.outputs.dispatch == 'true'
+        if: steps.clock.outputs.selected == 'true' && steps.clock.outputs.dry_run != 'true' && steps.state.outputs.action == 'full-update'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh workflow run update-weekly.yml \
             --repo FredericP555/carburantscorse1 \
             --ref "${{ github.event.repository.default_branch }}"
-          echo "C1 weekly production dispatched by watchdog."
+          echo "C1 weekly production dispatched because no validated release exists for the cycle."
+
+      - name: Rebuild Pages and re-run C1 business verification
+        if: steps.clock.outputs.selected == 'true' && steps.clock.outputs.dry_run != 'true' && steps.state.outputs.action == 'repair-publication'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          code=$(curl --retry 3 --retry-delay 3 -sS -o /tmp/pages-response.json -w "%{http_code}" \
+            -L -X POST \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/pages/builds")
+          cat /tmp/pages-response.json
+          echo "Pages API HTTP $code"
+          test "$code" = "201"
+          gh workflow run verify-c1-publication.yml \
+            --repo FredericP555/carburantscorse1 \
+            --ref "${{ github.event.repository.default_branch }}"
+          echo "Pages rebuild requested and C1 business verifier dispatched."
 
       - name: Write watchdog summary
         if: steps.clock.outputs.selected == 'true' && always()
         run: |
           {
-            echo '## C1 weekly watchdog'
-            echo "- Release already published today: ${{ steps.state.outputs.release_today || 'none' }}"
-            echo "- Active full C1 runs: ${{ steps.state.outputs.active_runs || '0' }}"
-            echo "- Full C1 dispatched: ${{ steps.state.outputs.dispatch == 'true' }}"
-            echo "- Decision: ${{ steps.state.outputs.reason }}"
+            echo '## C1 business-aware weekly watchdog'
+            echo "- Latest C1 release today: ${{ steps.state.outputs.release_today || 'none' }}"
+            echo "- Matching business-success run: ${{ steps.state.outputs.business_run || 'none' }}"
+            echo "- Active full C1 runs: ${{ steps.state.outputs.active_updates || '0' }}"
+            echo "- Active C1 business verifiers: ${{ steps.state.outputs.active_verifiers || '0' }}"
+            echo "- Decision: ${{ steps.state.outputs.action || 'not evaluated' }}"
+            echo "- Dry-run self-test: ${{ steps.clock.outputs.dry_run == 'true' }}"
+            echo "- Reason: ${{ steps.state.outputs.reason }}"
           } >> "$GITHUB_STEP_SUMMARY"
