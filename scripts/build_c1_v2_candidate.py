@@ -30,6 +30,7 @@ import pandas as pd
 from a4c_common.corse_brand import TOTAL, classify_registry_entry
 from a4c_common.price_math import at_cap
 import bouclier_detector
+import c1_bouclier_meta
 import r2_guard_v2
 import reliability_policy_v2
 import shield_phase_v2
@@ -328,7 +329,7 @@ def main() -> None:
             elif merged[-1][0] > old_last:
                 first_new=old_last+1; first_week=_monday_offset(first_new); first_month=_month_key(first_new); candidate[short][region]["w"]=[p for p in baseline[short][region]["w"] if p[0] < first_week]+_weekly(merged,first_week); candidate[short][region]["m"]=[p for p in baseline[short][region]["m"] if p[0] < first_month]+_monthly(merged,first_month)
 
-    meta=deepcopy(baseline.get("meta") or {}); meta["v2"]={"active":True,"version":"A4C-C1-V2-2026-07-23","daily_switch_date":SWITCH_DAY.isoformat(),"weekly_switch_date":WEEKLY_SWITCH.isoformat(),"monthly_switch":"2026-08","history_before_switch_preserved":True,"controlled_transition_applied":initial or bool((meta.get("v2") or {}).get("controlled_transition_applied")),"event_reopening_rule":"open rupture -> later same-fuel declaration; open closure -> later any-fuel station declaration; explicit end wins"}; candidate["meta"]=meta
+    meta=c1_bouclier_meta.attach_detector_bouclier(baseline.get("meta") or {},audit.get("bouclier")); meta["v2"]={"active":True,"version":"A4C-C1-V2-2026-07-23","daily_switch_date":SWITCH_DAY.isoformat(),"weekly_switch_date":WEEKLY_SWITCH.isoformat(),"monthly_switch":"2026-08","history_before_switch_preserved":True,"controlled_transition_applied":initial or bool((meta.get("v2") or {}).get("controlled_transition_applied")),"event_reopening_rule":"open rupture -> later same-fuel declaration; open closure -> later any-fuel station declaration; explicit end wins"}; candidate["meta"]=meta
     output=ROOT/args.output; summary_path=ROOT/args.summary; output.parent.mkdir(parents=True,exist_ok=True); summary_path.parent.mkdir(parents=True,exist_ok=True); output.write_text(json.dumps(candidate,ensure_ascii=False,separators=(",",":")),encoding="utf-8")
     switch_off=(SWITCH_DAY-core.ORIGIN).days; protected=0
     for fuel,short in core.FUELS.items():

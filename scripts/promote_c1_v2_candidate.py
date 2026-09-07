@@ -13,6 +13,7 @@ from datetime import date, timedelta
 import json
 from pathlib import Path
 
+import c1_bouclier_meta
 import update_data_v2 as core
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -68,6 +69,14 @@ def main() -> None:
     target_end = str(summary.get("target_end") or "")
     if not source_max or not target_end or target_end > source_max:
         raise SystemExit(f"Refusing C1 V2 candidate: target_end={target_end} source_max={source_max}")
+
+    try:
+        c1_bouclier_meta.validate_detector_bouclier(
+            candidate.get("meta") or {},
+            (summary.get("engine") or {}).get("bouclier"),
+        )
+    except ValueError as exc:
+        raise SystemExit(f"Refusing C1 V2 candidate: {exc}") from exc
 
     first_new_day: date | None = None
     for fuel in ("G", "S"):
