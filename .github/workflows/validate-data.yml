@@ -25,6 +25,9 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
+      - name: Run regression unit tests
+        run: PYTHONPATH=scripts:. python -m unittest discover -s tests -v
+
       - name: Verify station brand HTML parser
         run: python scripts/test_station_brands.py
 
