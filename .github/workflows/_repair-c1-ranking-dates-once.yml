@@ -11,7 +11,7 @@ permissions:
 
 jobs:
   repair:
-    if: github.event.head_commit.message == 'Bootstrap one-shot C1 ranking date repair'
+    if: github.event.head_commit.message == 'Retry one-shot C1 ranking date repair'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -79,28 +79,21 @@ jobs:
 
           replace_once(
               'scripts/build_c1_v2_candidate.py',
-              """import c1_bouclier_meta
-          import bouclier_detector
+              """import bouclier_detector
+          import c1_bouclier_meta
+          import r2_guard_v2
           """,
-              """import c1_bouclier_meta
+              """import bouclier_detector
+          import c1_bouclier_meta
           import c1_last_date
-          import bouclier_detector
+          import r2_guard_v2
           """,
           )
           replace_once(
               'scripts/build_c1_v2_candidate.py',
-              """    meta=c1_bouclier_meta.attach_detector_bouclier(
-                  deepcopy(baseline.get("meta") or {}),
-                  audit["bouclier"],
-              )
-              meta["v2"]={
+              """    meta=c1_bouclier_meta.attach_detector_bouclier(baseline.get("meta") or {},audit.get("bouclier")); meta["v2"]={
           """,
-              """    meta=c1_bouclier_meta.attach_detector_bouclier(
-                  deepcopy(baseline.get("meta") or {}),
-                  audit["bouclier"],
-              )
-              meta=c1_last_date.attach_last_date(meta, candidate)
-              meta["v2"]={
+              """    meta=c1_bouclier_meta.attach_detector_bouclier(baseline.get("meta") or {},audit.get("bouclier")); meta=c1_last_date.attach_last_date(meta,candidate); meta["v2"]={
           """,
           )
 
