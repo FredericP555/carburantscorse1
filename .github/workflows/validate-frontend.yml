@@ -21,6 +21,9 @@ jobs:
           node --check editorial-patch.js
           node --check freshness.js
 
+      - name: Run regional date-alignment regression
+        run: python -m unittest tests.test_frontend_regional_date_alignment -v
+
       - name: Verify gap date alignment and explain TTC vs HT peaks
         run: |
           python - <<'PY'
