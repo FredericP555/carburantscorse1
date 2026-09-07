@@ -5,7 +5,7 @@ promotion boundary rather than the upstream parser: a malformed candidate must f
 even if it somehow reaches the promoter.
 """
 from copy import deepcopy
-from datetime import date, timedelta
+from datetime import timedelta
 import unittest
 
 import c1_v2_contracts as contracts
@@ -24,11 +24,9 @@ def payload(last_off=1):
     data = {}
     for short, base in (("G", 1.80), ("S", 1.90)):
         data[short] = {}
-        for idx, region in enumerate(REGIONS):
-            # Keep the mainland aggregate exactly equal to the 12 regional means.
-            ttc = base if region in ("corse", "moy_regions") else base
+        for region in REGIONS:
             data[short][region] = {
-                "d": [row(off, ttc, region) for off in range(last_off + 1)],
+                "d": [row(off, base, region) for off in range(last_off + 1)],
                 "w": [],
                 "m": [],
             }
@@ -121,13 +119,17 @@ class C1V2MetadataContractTests(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     contracts.validate_publication_metadata(bad)
 
-    def test_bouclier_contract_requires_complete_evaluation_fields(self):
+    def test_bouclier_contract_requires_complete_evaluation_fields_and_phases(self):
         last_date = "2026-09-06"
         meta = {
             "last_date": last_date,
             "bouclier": {
                 "Gazole": {
-                    "ranges": [{"d1": "2026-03-20", "d2": "2026-04-07"}],
+                    "ranges": [{"d1": "2026-04-08", "d2": "2026-04-20"}],
+                    "phases": [{
+                        "d1": "2026-04-08", "d2": "2026-04-20", "cap": 2.25,
+                        "phase_id": "Gazole:2026-04-08:2.250",
+                    }],
                     "current_active": False,
                     "current_active_since": None,
                     "current_cap": 2.25,
@@ -139,7 +141,11 @@ class C1V2MetadataContractTests(unittest.TestCase):
                     "rule": {"definition": "rule"},
                 },
                 "SP95": {
-                    "ranges": [{"d1": "2026-03-20", "d2": "2026-04-07"}],
+                    "ranges": [{"d1": "2026-04-08", "d2": "2026-04-20"}],
+                    "phases": [{
+                        "d1": "2026-04-08", "d2": "2026-04-20", "cap": 1.99,
+                        "phase_id": "SP95:2026-04-08:1.990",
+                    }],
                     "current_active": False,
                     "current_active_since": None,
                     "current_cap": 1.99,
@@ -153,12 +159,23 @@ class C1V2MetadataContractTests(unittest.TestCase):
             },
         }
         contracts.validate_bouclier_contract(meta)
-        for fuel, field in (("Gazole", "evaluated_through"), ("Gazole", "current_cap"), ("SP95", "latest_non_total_stations"), ("SP95", "rule")):
+        for fuel, field in (
+            ("Gazole", "evaluated_through"),
+            ("Gazole", "current_cap"),
+            ("Gazole", "phases"),
+            ("SP95", "latest_non_total_stations"),
+            ("SP95", "rule"),
+        ):
             with self.subTest(fuel=fuel, field=field):
                 bad = deepcopy(meta)
                 bad["bouclier"][fuel].pop(field)
                 with self.assertRaises(ValueError):
                     contracts.validate_bouclier_contract(bad)
+
+        bad = deepcopy(meta)
+        bad["bouclier"]["Gazole"]["phases"][0]["cap"] = 1.23
+        with self.assertRaises(ValueError):
+            contracts.validate_bouclier_contract(bad)
 
 
 if __name__ == "__main__":
