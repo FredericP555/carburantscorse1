@@ -49,35 +49,61 @@ jobs:
           set -euo pipefail
           tag="$(gh release list --repo "$GITHUB_REPOSITORY" --limit 100 --json tagName,publishedAt \
             --jq '[.[] | select(.tagName | startswith("a4c-v2-shared-"))] | sort_by(.publishedAt) | last | .tagName // ""')"
+          test -n "$tag"
+          release_json="$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$tag")"
+          target="$(jq -r '.target_commitish // ""' <<<"$release_json")"
+          bundle_digest="$(jq -r '[.assets[] | select(.name=="official_13_20.csv.gz")][0].digest // ""' <<<"$release_json")"
+          manifest_digest="$(jq -r '[.assets[] | select(.name=="official_13_20.meta.json")][0].digest // ""' <<<"$release_json")"
+          test -n "$target"
+          test -n "$bundle_digest"
+          test -n "$manifest_digest"
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
-          echo "Latest C1 V2 release: ${tag:-none}"
+          echo "target=$target" >> "$GITHUB_OUTPUT"
+          echo "bundle_digest=$bundle_digest" >> "$GITHUB_OUTPUT"
+          echo "manifest_digest=$manifest_digest" >> "$GITHUB_OUTPUT"
+          echo "Latest C1 V2 release: $tag"
+          echo "Release target: $target"
+          echo "Bundle digest: $bundle_digest"
+          echo "Manifest digest: $manifest_digest"
 
-      - name: Prove C1 business success on public Pages
+      - name: Extract data.json from the release target
         env:
-          RELEASE_TAG: ${{ steps.release.outputs.tag }}
+          RELEASE_TARGET: ${{ steps.release.outputs.target }}
         shell: bash
         run: |
           set -euo pipefail
-          args=(
-            --expected data.json
-            --page-url https://fredericp555.github.io/carburantscorse1/data.json
-            --output outputs/c1-business-success.json
-            --commit "$(git rev-parse HEAD)"
-            --timeout-seconds 300
+          mkdir -p outputs
+          git fetch --no-tags origin "$RELEASE_TARGET" --depth=1
+          git show "$RELEASE_TARGET:data.json" > outputs/release-target-data.json
+
+      - name: Prove C1 business success on release and public Pages
+        env:
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
+          RELEASE_TARGET: ${{ steps.release.outputs.target }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/verify_c1_business_success.py \
+            --expected data.json \
+            --page-url https://fredericp555.github.io/carburantscorse1/data.json \
+            --output outputs/c1-business-success.json \
+            --commit "$(git rev-parse HEAD)" \
+            --release-tag "$RELEASE_TAG" \
+            --release-target "$RELEASE_TARGET" \
+            --release-target-data outputs/release-target-data.json \
+            --timeout-seconds 300 \
             --interval-seconds 5
-          )
-          if [ -n "$RELEASE_TAG" ]; then
-            args+=(--release-tag "$RELEASE_TAG")
-          fi
-          python scripts/verify_c1_business_success.py "${args[@]}"
 
       - name: Write business-success summary
         if: always()
+        env:
+          BUNDLE_DIGEST: ${{ steps.release.outputs.bundle_digest }}
+          MANIFEST_DIGEST: ${{ steps.release.outputs.manifest_digest }}
         shell: bash
         run: |
           if [ -f outputs/c1-business-success.json ]; then
             python - <<'PY' >> "$GITHUB_STEP_SUMMARY"
-          import json
+          import json, os
           from pathlib import Path
           r=json.loads(Path('outputs/c1-business-success.json').read_text(encoding='utf-8'))
           print('## C1 business success')
@@ -85,7 +111,11 @@ jobs:
           print(f"- Data through: **{r.get('pages_data_through')}**")
           print(f"- Main commit: `{r.get('commit')}`")
           print(f"- data.json SHA-256: `{r.get('pages_sha256')}`")
-          print(f"- C1 release: `{r.get('release_tag') or 'not recorded'}`")
+          print(f"- C1 release: `{r.get('release_tag')}`")
+          print(f"- Release target: `{r.get('release_target')}`")
+          print(f"- Release data.json SHA-256: `{r.get('release_data_sha256')}`")
+          print(f"- Shared bundle: `{os.environ.get('BUNDLE_DIGEST') or 'missing'}`")
+          print(f"- Shared manifest: `{os.environ.get('MANIFEST_DIGEST') or 'missing'}`")
           print(f"- Pages checks: {r.get('attempts', 1)} attempt(s)")
           PY
           else
