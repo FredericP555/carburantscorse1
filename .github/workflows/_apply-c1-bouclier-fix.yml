@@ -1,0 +1,214 @@
+name: Apply C1 bouclier publication fix (temporary)
+
+on:
+  push:
+    branches: [fix/c1-bouclier-publication]
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/c1-bouclier-publication
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Patch C1 builder, promoter and PR validation
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          # 1) Builder: publish the detector output into candidate.meta.bouclier.
+          path = Path('scripts/build_c1_v2_candidate.py')
+          text = path.read_text(encoding='utf-8')
+          old = 'import bouclier_detector\nimport r2_guard_v2'
+          new = 'import bouclier_detector\nimport c1_bouclier_meta\nimport r2_guard_v2'
+          if text.count(old) != 1:
+              raise SystemExit('Unexpected builder import layout')
+          text = text.replace(old, new, 1)
+          old = '    meta=deepcopy(baseline.get("meta") or {}); meta["v2"]='
+          new = '    meta=c1_bouclier_meta.attach_detector_bouclier(baseline.get("meta") or {},audit.get("bouclier")); meta["v2"]='
+          if text.count(old) != 1:
+              raise SystemExit('Unexpected builder metadata layout')
+          text = text.replace(old, new, 1)
+          path.write_text(text, encoding='utf-8')
+
+          # 2) Promoter: fail closed if the candidate does not carry the exact detector metadata.
+          path = Path('scripts/promote_c1_v2_candidate.py')
+          text = path.read_text(encoding='utf-8')
+          old = 'import update_data_v2 as core'
+          new = 'import c1_bouclier_meta\nimport update_data_v2 as core'
+          if text.count(old) != 1:
+              raise SystemExit('Unexpected promoter import layout')
+          text = text.replace(old, new, 1)
+          anchor = '''    if not source_max or not target_end or target_end > source_max:\n        raise SystemExit(f"Refusing C1 V2 candidate: target_end={target_end} source_max={source_max}")\n\n    first_new_day: date | None = None\n'''
+          replacement = '''    if not source_max or not target_end or target_end > source_max:\n        raise SystemExit(f"Refusing C1 V2 candidate: target_end={target_end} source_max={source_max}")\n\n    try:\n        c1_bouclier_meta.validate_detector_bouclier(\n            candidate.get("meta") or {},\n            (summary.get("engine") or {}).get("bouclier"),\n        )\n    except ValueError as exc:\n        raise SystemExit(f"Refusing C1 V2 candidate: {exc}") from exc\n\n    first_new_day: date | None = None\n'''
+          if text.count(anchor) != 1:
+              raise SystemExit('Unexpected promoter validation layout')
+          text = text.replace(anchor, replacement, 1)
+          path.write_text(text, encoding='utf-8')
+
+          # 3) Ensure PR validation runs the same unit-test suite as production preflight.
+          path = Path('.github/workflows/validate-data.yml')
+          text = path.read_text(encoding='utf-8')
+          old = 'permissions:\n  contents: read\n\njobs:'
+          new = 'permissions:\n  contents: read\n\nenv:\n  PYTHONPATH: .:scripts\n\njobs:'
+          if text.count(old) != 1:
+              raise SystemExit('Unexpected validate-data permissions layout')
+          text = text.replace(old, new, 1)
+          old = '''      - name: Install dependencies\n        run: pip install -r requirements.txt\n\n      - name: Verify station brand HTML parser\n'''
+          new = '''      - name: Install dependencies\n        run: pip install -r requirements.txt\n\n      - name: Unit tests\n        run: python -m unittest discover -s tests -v\n\n      - name: Verify station brand HTML parser\n'''
+          if text.count(old) != 1:
+              raise SystemExit('Unexpected validate-data install layout')
+          text = text.replace(old, new, 1)
+          path.write_text(text, encoding='utf-8')
+          PY
+
+      - name: Add pure bouclier metadata guard
+        run: |
+          cat > scripts/c1_bouclier_meta.py <<'PY'
+          """Publish and validate C1 bouclier metadata without touching fuel series."""
+          from __future__ import annotations
+
+          from copy import deepcopy
+
+          REQUIRED_FUELS = ("Gazole", "SP95")
+
+
+          def _validated_shape(value: object, *, label: str) -> dict:
+              if not isinstance(value, dict):
+                  raise ValueError(f"{label} bouclier metadata absent or invalid")
+              for fuel in REQUIRED_FUELS:
+                  fuel_meta = value.get(fuel)
+                  if not isinstance(fuel_meta, dict):
+                      raise ValueError(f"{label} bouclier metadata absent for {fuel}")
+                  if not isinstance(fuel_meta.get("ranges"), list):
+                      raise ValueError(f"{label} bouclier ranges invalid for {fuel}")
+              return value
+
+
+          def attach_detector_bouclier(meta: dict | None, detector_bouclier: object) -> dict:
+              """Return metadata carrying a deep-copied detector result.
+
+              Existing metadata is preserved, but a stale/missing ``bouclier`` field is always
+              replaced by the output calculated during the current V2 build.
+              """
+              detector = _validated_shape(detector_bouclier, label="detector")
+              out = deepcopy(meta or {})
+              out["bouclier"] = deepcopy(detector)
+              return out
+
+
+          def validate_detector_bouclier(meta: dict | None, detector_bouclier: object) -> dict:
+              """Fail if published C1 metadata is absent, malformed or stale."""
+              detector = _validated_shape(detector_bouclier, label="detector")
+              published = _validated_shape((meta or {}).get("bouclier"), label="published")
+              if published != detector:
+                  raise ValueError("published bouclier metadata differs from detector output")
+              return published
+          PY
+
+      - name: Add regression tests
+        run: |
+          cat > tests/test_c1_bouclier_metadata.py <<'PY'
+          """Regression tests for C1 publication of dynamic TotalEnergies bouclier metadata."""
+
+          import unittest
+          from pathlib import Path
+
+          from scripts import c1_bouclier_meta
+
+
+          def sample_bouclier(end="2026-09-06"):
+              return {
+                  "Gazole": {
+                      "ranges": [{"d1": "2026-07-23", "d2": end}],
+                      "current_active": True,
+                  },
+                  "SP95": {
+                      "ranges": [{"d1": "2026-03-12", "d2": end}],
+                      "current_active": True,
+                  },
+              }
+
+
+          class C1BouclierMetadataTests(unittest.TestCase):
+              def test_attach_replaces_stale_value_and_preserves_other_meta(self):
+                  fresh = sample_bouclier()
+                  baseline = {
+                      "v2": {"active": True},
+                      "other": "keep-me",
+                      "bouclier": sample_bouclier("2026-08-30"),
+                  }
+                  out = c1_bouclier_meta.attach_detector_bouclier(baseline, fresh)
+                  self.assertEqual(out["bouclier"], fresh)
+                  self.assertEqual(out["other"], "keep-me")
+                  self.assertEqual(out["v2"], {"active": True})
+
+              def test_attach_deep_copies_detector_output(self):
+                  fresh = sample_bouclier()
+                  out = c1_bouclier_meta.attach_detector_bouclier({}, fresh)
+                  fresh["Gazole"]["ranges"][0]["d2"] = "2099-01-01"
+                  self.assertEqual(out["bouclier"]["Gazole"]["ranges"][0]["d2"], "2026-09-06")
+
+              def test_validate_accepts_exact_detector_output(self):
+                  fresh = sample_bouclier()
+                  published = c1_bouclier_meta.validate_detector_bouclier(
+                      {"bouclier": fresh}, fresh
+                  )
+                  self.assertEqual(published, fresh)
+
+              def test_validate_rejects_missing_published_metadata(self):
+                  with self.assertRaisesRegex(ValueError, "published bouclier metadata absent"):
+                      c1_bouclier_meta.validate_detector_bouclier({}, sample_bouclier())
+
+              def test_validate_rejects_malformed_fuel_ranges(self):
+                  broken = sample_bouclier()
+                  broken["SP95"]["ranges"] = None
+                  with self.assertRaisesRegex(ValueError, "detector bouclier ranges invalid for SP95"):
+                      c1_bouclier_meta.attach_detector_bouclier({}, broken)
+
+              def test_validate_rejects_stale_published_metadata(self):
+                  detector = sample_bouclier()
+                  stale = sample_bouclier("2026-08-30")
+                  with self.assertRaisesRegex(ValueError, "differs from detector output"):
+                      c1_bouclier_meta.validate_detector_bouclier(
+                          {"bouclier": stale}, detector
+                      )
+
+              def test_builder_and_promoter_are_wired_to_guard(self):
+                  root = Path(__file__).resolve().parents[1]
+                  builder = (root / "scripts/build_c1_v2_candidate.py").read_text(encoding="utf-8")
+                  promoter = (root / "scripts/promote_c1_v2_candidate.py").read_text(encoding="utf-8")
+                  self.assertIn("c1_bouclier_meta.attach_detector_bouclier", builder)
+                  self.assertIn("c1_bouclier_meta.validate_detector_bouclier", promoter)
+
+
+          if __name__ == "__main__":
+              unittest.main()
+          PY
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Compile and run unit tests before committing
+        env:
+          PYTHONPATH: .:scripts
+        run: |
+          python -m compileall -q a4c_common scripts tests
+          python -m unittest discover -s tests -v
+
+      - name: Commit tested fix
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add scripts/build_c1_v2_candidate.py scripts/promote_c1_v2_candidate.py scripts/c1_bouclier_meta.py tests/test_c1_bouclier_metadata.py .github/workflows/validate-data.yml
+          git commit -m "Fix C1 bouclier metadata publication"
+          git push origin HEAD:fix/c1-bouclier-publication
