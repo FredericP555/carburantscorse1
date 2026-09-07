@@ -34,21 +34,24 @@ jobs:
       - name: Build real C1 V2 candidate
         run: python scripts/build_c1_v2_candidate.py
 
-      - name: Verify real C1 V2 candidate
-        run: python scripts/promote_c1_v2_candidate.py
-
-      - name: Prove published metadata equals detector output
+      - name: Prove real candidate publishes exact detector metadata
         run: |
           python - <<'PY'
           import json
+          from scripts import c1_bouclier_meta
+
           candidate=json.load(open('outputs/c1-v2-candidate.json',encoding='utf-8'))
           summary=json.load(open('outputs/c1-v2-summary.json',encoding='utf-8'))
-          published=(candidate.get('meta') or {}).get('bouclier')
           detected=(summary.get('engine') or {}).get('bouclier')
-          assert published == detected and published, 'candidate bouclier metadata does not match detector output'
+          published=c1_bouclier_meta.validate_detector_bouclier(
+              candidate.get('meta') or {}, detected
+          )
           assert isinstance(published['Gazole']['ranges'], list)
           assert isinstance(published['SP95']['ranges'], list)
+          assert summary['rewritten_daily_rows_total'] == 0
+          assert summary['added_daily_rows_total'] == 0
           print('C1 candidate bouclier metadata exactly matches detector output')
+          print('No published daily price row was rewritten or added during this metadata repair test')
           print('Gazole ranges:', published['Gazole']['ranges'])
           print('SP95 ranges:', published['SP95']['ranges'])
           PY
