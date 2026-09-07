@@ -1,0 +1,54 @@
+name: Test C1 bouclier publication fix (temporary)
+
+on:
+  push:
+    branches: [fix/c1-bouclier-publication]
+
+permissions:
+  contents: read
+
+env:
+  PYTHONPATH: .:scripts
+
+jobs:
+  test:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/c1-bouclier-publication
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Unit tests
+        run: python -m unittest discover -s tests -v
+
+      - name: Build real C1 V2 candidate
+        run: python scripts/build_c1_v2_candidate.py
+
+      - name: Verify real C1 V2 candidate
+        run: python scripts/promote_c1_v2_candidate.py
+
+      - name: Prove published metadata equals detector output
+        run: |
+          python - <<'PY'
+          import json
+          candidate=json.load(open('outputs/c1-v2-candidate.json',encoding='utf-8'))
+          summary=json.load(open('outputs/c1-v2-summary.json',encoding='utf-8'))
+          published=(candidate.get('meta') or {}).get('bouclier')
+          detected=(summary.get('engine') or {}).get('bouclier')
+          assert published == detected and published, 'candidate bouclier metadata does not match detector output'
+          assert isinstance(published['Gazole']['ranges'], list)
+          assert isinstance(published['SP95']['ranges'], list)
+          print('C1 candidate bouclier metadata exactly matches detector output')
+          print('Gazole ranges:', published['Gazole']['ranges'])
+          print('SP95 ranges:', published['SP95']['ranges'])
+          PY
