@@ -66,28 +66,30 @@ jobs:
           set -euo pipefail
 
           today=$(TZ=Europe/Paris date +%F)
-          latest_today=$(
-            gh release list \
-              --repo FredericP555/carburantscorse1 \
-              --limit 50 \
-              --json tagName,publishedAt \
-            | TODAY="$today" python -c '
-import json, os, sys
-from datetime import datetime
-from zoneinfo import ZoneInfo
-items = json.load(sys.stdin)
-today = os.environ["TODAY"]
-rows = []
-for item in items:
-    tag = str(item.get("tagName") or "")
-    published = item.get("publishedAt")
-    if not tag.startswith("a4c-v2-shared-") or not published:
-        continue
-    local = datetime.fromisoformat(published.replace("Z", "+00:00")).astimezone(ZoneInfo("Europe/Paris"))
-    if local.date().isoformat() == today:
-        rows.append((published, tag))
-print(max(rows)[1] if rows else "")
-'
+          release_json=$(gh release list \
+            --repo FredericP555/carburantscorse1 \
+            --limit 50 \
+            --json tagName,publishedAt)
+
+          latest_today=$(RELEASE_JSON="$release_json" TODAY="$today" python - <<'PY'
+          import json
+          import os
+          from datetime import datetime
+          from zoneinfo import ZoneInfo
+
+          items = json.loads(os.environ['RELEASE_JSON'])
+          today = os.environ['TODAY']
+          rows = []
+          for item in items:
+              tag = str(item.get('tagName') or '')
+              published = item.get('publishedAt')
+              if not tag.startswith('a4c-v2-shared-') or not published:
+                  continue
+              local = datetime.fromisoformat(published.replace('Z', '+00:00')).astimezone(ZoneInfo('Europe/Paris'))
+              if local.date().isoformat() == today:
+                  rows.append((published, tag))
+          print(max(rows)[1] if rows else '')
+          PY
           )
 
           active=$(gh run list \
@@ -112,7 +114,6 @@ print(max(rows)[1] if rows else "")
           echo "release_today=$latest_today" >> "$GITHUB_OUTPUT"
           echo "active_runs=$active" >> "$GITHUB_OUTPUT"
           echo "reason=$reason" >> "$GITHUB_OUTPUT"
-
           echo "$reason"
 
       - name: Dispatch full C1 production update
