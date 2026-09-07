@@ -64,15 +64,21 @@ const hidden = new Set(REGIONS);
 const legItems = new Map();
 
 // ── Accès aux données pré-calculées ─────────────────────────────────────────
-const ORIGIN = new Date('2022-01-01');
+const DAY_MS = 86400000;
+const ORIGIN_MS = Date.UTC(2022,0,1);
+const ORIGIN = new Date(ORIGIN_MS);
 
 function offsetToDate(n) {
-  const d = new Date(ORIGIN); d.setDate(d.getDate()+n);
-  return d.toISOString().slice(0,10);
+  const off = Number(n);
+  if(!Number.isFinite(off)) return null;
+  return new Date(ORIGIN_MS + off*DAY_MS).toISOString().slice(0,10);
 }
 
 function dateToOffset(str) {
-  return Math.round((new Date(str) - ORIGIN) / 86400000);
+  const raw = String(str||'');
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(raw)) return NaN;
+  const [y,m,d] = raw.split('-').map(Number);
+  return Math.round((Date.UTC(y,m-1,d)-ORIGIN_MS)/DAY_MS);
 }
 
 function getSeries(carbuKey, serieName, res) {

@@ -14,6 +14,7 @@ import json
 from pathlib import Path
 
 import c1_bouclier_meta
+import c1_last_date
 import update_data_v2 as core
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -75,6 +76,11 @@ def main() -> None:
             candidate.get("meta") or {},
             (summary.get("engine") or {}).get("bouclier"),
         )
+    except ValueError as exc:
+        raise SystemExit(f"Refusing C1 V2 candidate: {exc}") from exc
+
+    try:
+        c1_last_date.validate_last_date(candidate)
     except ValueError as exc:
         raise SystemExit(f"Refusing C1 V2 candidate: {exc}") from exc
 

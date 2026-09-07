@@ -123,7 +123,8 @@
     const weekly=getSeries(ck,'corse','w').filter(p=>p&&p[1]!=null);
     if(!weekly.length)return null;
     const daily=getSeries(ck,'corse','d').filter(p=>p&&p[1]!=null);
-    const maxDate=(DATA.meta&&DATA.meta.last_date)||(daily.length?offsetToDate(daily[daily.length-1][0]):null);
+    // The ranking must follow the actual fuel daily series, not metadata that may lag a publish.
+    const maxDate=daily.length?offsetToDate(daily[daily.length-1][0]):null;
     if(!maxDate)return null;
     let chosen=null;
     for(const row of weekly){
