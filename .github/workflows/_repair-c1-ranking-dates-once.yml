@@ -11,34 +11,22 @@ permissions:
 
 jobs:
   repair:
-    if: github.event.head_commit.message == 'Retry one-shot C1 ranking date repair'
+    if: github.event.head_commit.message == 'Retry 2 one-shot C1 ranking date repair'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
 
-      - name: Apply ranking date and metadata repairs
-        shell: bash
+      - name: Patch frontend UTC date conversion
         run: |
           python - <<'PY'
           from pathlib import Path
-
-          def replace_once(path, old, new):
-              p = Path(path)
-              text = p.read_text(encoding='utf-8')
-              count = text.count(old)
-              if count != 1:
-                  raise SystemExit(f'{path}: expected exactly one replacement target, found {count}')
-              p.write_text(text.replace(old, new, 1), encoding='utf-8')
-
-          replace_once(
-              'app.js',
-              """const ORIGIN = new Date('2022-01-01');
+          p=Path('app.js'); s=p.read_text(encoding='utf-8')
+          old="""const ORIGIN = new Date('2022-01-01');
 
           function offsetToDate(n) {
             const d = new Date(ORIGIN); d.setDate(d.getDate()+n);
@@ -48,8 +36,8 @@ jobs:
           function dateToOffset(str) {
             return Math.round((new Date(str) - ORIGIN) / 86400000);
           }
-          """,
-              """const DAY_MS = 86400000;
+          """
+          new="""const DAY_MS = 86400000;
           const ORIGIN_MS = Date.UTC(2022,0,1);
           const ORIGIN = new Date(ORIGIN_MS);
 
@@ -65,56 +53,50 @@ jobs:
             const [y,m,d] = raw.split('-').map(Number);
             return Math.round((Date.UTC(y,m-1,d)-ORIGIN_MS)/DAY_MS);
           }
-          """,
-          )
+          """
+          if old not in s: raise SystemExit('app.js UTC target not found')
+          p.write_text(s.replace(old,new,1),encoding='utf-8')
+          PY
 
-          replace_once(
-              'freshness.js',
-              """    const maxDate=(DATA.meta&&DATA.meta.last_date)||(daily.length?offsetToDate(daily[daily.length-1][0]):null);
-          """,
-              """    // The ranking must follow the actual fuel daily series, not metadata that may lag a publish.
-              const maxDate=daily.length?offsetToDate(daily[daily.length-1][0]):null;
-          """,
-          )
+      - name: Patch ranking freshness source
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('freshness.js'); s=p.read_text(encoding='utf-8')
+          old="    const maxDate=(DATA.meta&&DATA.meta.last_date)||(daily.length?offsetToDate(daily[daily.length-1][0]):null);"
+          new="    // The ranking must follow the actual fuel daily series, not metadata that may lag a publish.\n    const maxDate=daily.length?offsetToDate(daily[daily.length-1][0]):null;"
+          if s.count(old)!=1: raise SystemExit(f'freshness target count={s.count(old)}')
+          p.write_text(s.replace(old,new,1),encoding='utf-8')
+          PY
 
-          replace_once(
-              'scripts/build_c1_v2_candidate.py',
-              """import bouclier_detector
-          import c1_bouclier_meta
-          import r2_guard_v2
-          """,
-              """import bouclier_detector
-          import c1_bouclier_meta
-          import c1_last_date
-          import r2_guard_v2
-          """,
-          )
-          replace_once(
-              'scripts/build_c1_v2_candidate.py',
-              """    meta=c1_bouclier_meta.attach_detector_bouclier(baseline.get("meta") or {},audit.get("bouclier")); meta["v2"]={
-          """,
-              """    meta=c1_bouclier_meta.attach_detector_bouclier(baseline.get("meta") or {},audit.get("bouclier")); meta=c1_last_date.attach_last_date(meta,candidate); meta["v2"]={
-          """,
-          )
+      - name: Patch V2 builder metadata
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('scripts/build_c1_v2_candidate.py'); s=p.read_text(encoding='utf-8')
+          old='import c1_bouclier_meta\n'
+          if s.count(old)!=1: raise SystemExit(f'builder import target count={s.count(old)}')
+          s=s.replace(old,'import c1_bouclier_meta\nimport c1_last_date\n',1)
+          old='    meta=c1_bouclier_meta.attach_detector_bouclier(baseline.get("meta") or {},audit.get("bouclier")); meta["v2"]={'
+          new='    meta=c1_bouclier_meta.attach_detector_bouclier(baseline.get("meta") or {},audit.get("bouclier")); meta=c1_last_date.attach_last_date(meta,candidate); meta["v2"]={'
+          if s.count(old)!=1: raise SystemExit(f'builder metadata target count={s.count(old)}')
+          p.write_text(s.replace(old,new,1),encoding='utf-8')
+          PY
 
-          replace_once(
-              'scripts/promote_c1_v2_candidate.py',
-              """import c1_bouclier_meta
-          import update_data_v2 as core
-          """,
-              """import c1_bouclier_meta
-          import c1_last_date
-          import update_data_v2 as core
-          """,
-          )
-          replace_once(
-              'scripts/promote_c1_v2_candidate.py',
-              """    except ValueError as exc:
+      - name: Patch V2 promotion guard
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('scripts/promote_c1_v2_candidate.py'); s=p.read_text(encoding='utf-8')
+          old='import c1_bouclier_meta\n'
+          if s.count(old)!=1: raise SystemExit(f'promoter import target count={s.count(old)}')
+          s=s.replace(old,'import c1_bouclier_meta\nimport c1_last_date\n',1)
+          old='''    except ValueError as exc:
                   raise SystemExit(f"Refusing C1 V2 candidate: {exc}") from exc
 
               first_new_day: date | None = None
-          """,
-              """    except ValueError as exc:
+          '''
+          new='''    except ValueError as exc:
                   raise SystemExit(f"Refusing C1 V2 candidate: {exc}") from exc
 
               try:
@@ -123,152 +105,96 @@ jobs:
                   raise SystemExit(f"Refusing C1 V2 candidate: {exc}") from exc
 
               first_new_day: date | None = None
-          """,
-          )
+          '''
+          if s.count(old)!=1: raise SystemExit(f'promoter guard target count={s.count(old)}')
+          p.write_text(s.replace(old,new,1),encoding='utf-8')
           PY
 
+      - name: Add last-date helper and regression tests
+        run: |
           cat > scripts/c1_last_date.py <<'PY'
           #!/usr/bin/env python3
           """Canonical C1 last-date metadata derived from actual daily series."""
           from __future__ import annotations
-
           import datetime as dt
           import math
           from typing import Any
-
           ORIGIN = dt.date(2022, 1, 1)
-
-
           def _last_valid_offset(rows: Any) -> int | None:
-              if not isinstance(rows, list):
-                  return None
+              if not isinstance(rows, list): return None
               for row in reversed(rows):
-                  if not isinstance(row, list) or len(row) < 2 or row[1] is None:
-                      continue
-                  try:
-                      off = int(row[0])
-                      value = float(row[1])
-                  except (TypeError, ValueError):
-                      continue
-                  if math.isfinite(value):
-                      return off
+                  if not isinstance(row, list) or len(row) < 2 or row[1] is None: continue
+                  try: off=int(row[0]); value=float(row[1])
+                  except (TypeError,ValueError): continue
+                  if math.isfinite(value): return off
               return None
-
-
-          def latest_daily_date(payload: dict[str, Any]) -> str:
-              offsets: list[int] = []
-              for short in ("G", "S"):
-                  rows = ((((payload.get(short) or {}).get("corse") or {}).get("d")) or [])
-                  off = _last_valid_offset(rows)
-                  if off is not None:
-                      offsets.append(off)
-              if not offsets:
-                  raise ValueError("No valid C1 daily rows available for meta.last_date")
-              return (ORIGIN + dt.timedelta(days=max(offsets))).isoformat()
-
-
-          def attach_last_date(meta: dict[str, Any] | None, payload: dict[str, Any]) -> dict[str, Any]:
-              out = dict(meta or {})
-              out["last_date"] = latest_daily_date(payload)
-              return out
-
-
-          def validate_last_date(payload: dict[str, Any]) -> None:
-              expected = latest_daily_date(payload)
-              actual = ((payload.get("meta") or {}).get("last_date"))
-              if actual != expected:
-                  raise ValueError(
-                      f"candidate meta.last_date mismatch: expected {expected}, got {actual!r}"
-                  )
+          def latest_daily_date(payload: dict[str,Any]) -> str:
+              offsets=[]
+              for short in ('G','S'):
+                  rows=((((payload.get(short) or {}).get('corse') or {}).get('d')) or [])
+                  off=_last_valid_offset(rows)
+                  if off is not None: offsets.append(off)
+              if not offsets: raise ValueError('No valid C1 daily rows available for meta.last_date')
+              return (ORIGIN+dt.timedelta(days=max(offsets))).isoformat()
+          def attach_last_date(meta: dict[str,Any] | None,payload: dict[str,Any]) -> dict[str,Any]:
+              out=dict(meta or {}); out['last_date']=latest_daily_date(payload); return out
+          def validate_last_date(payload: dict[str,Any]) -> None:
+              expected=latest_daily_date(payload); actual=((payload.get('meta') or {}).get('last_date'))
+              if actual!=expected: raise ValueError(f'candidate meta.last_date mismatch: expected {expected}, got {actual!r}')
           PY
-
           cat > tests/test_c1_ranking_dates.py <<'PY'
           import datetime as dt
           import pathlib
           import sys
           import unittest
-
-          ROOT = pathlib.Path(__file__).resolve().parents[1]
-          sys.path.insert(0, str(ROOT / "scripts"))
-
+          ROOT=pathlib.Path(__file__).resolve().parents[1]
+          sys.path.insert(0,str(ROOT/'scripts'))
           import c1_last_date
-
-
           class C1RankingDateTests(unittest.TestCase):
               def test_offset_fixture_for_latest_complete_week(self):
-                  origin = dt.date(2022, 1, 1)
-                  self.assertEqual((dt.date(2026, 8, 31) - origin).days, 1703)
-                  self.assertEqual((dt.date(2026, 9, 6) - origin).days, 1709)
-
+                  origin=dt.date(2022,1,1)
+                  self.assertEqual((dt.date(2026,8,31)-origin).days,1703)
+                  self.assertEqual((dt.date(2026,9,6)-origin).days,1709)
               def test_latest_daily_date_uses_actual_valid_rows(self):
-                  payload = {
-                      "G": {"corse": {"d": [[1708, 2.24], [1709, 2.25], [1710, None]]}},
-                      "S": {"corse": {"d": [[1708, 1.99], [1709, None]]}},
-                  }
-                  self.assertEqual(c1_last_date.latest_daily_date(payload), "2026-09-06")
-
+                  payload={'G':{'corse':{'d':[[1708,2.24],[1709,2.25],[1710,None]]}},'S':{'corse':{'d':[[1708,1.99],[1709,None]]}}}
+                  self.assertEqual(c1_last_date.latest_daily_date(payload),'2026-09-06')
               def test_attach_replaces_stale_metadata(self):
-                  payload = {
-                      "G": {"corse": {"d": [[1709, 2.25]]}},
-                      "S": {"corse": {"d": [[1708, 1.99]]}},
-                  }
-                  meta = c1_last_date.attach_last_date({"last_date": "2026-08-23"}, payload)
-                  self.assertEqual(meta["last_date"], "2026-09-06")
-
+                  payload={'G':{'corse':{'d':[[1709,2.25]]}},'S':{'corse':{'d':[[1708,1.99]]}}}
+                  self.assertEqual(c1_last_date.attach_last_date({'last_date':'2026-08-23'},payload)['last_date'],'2026-09-06')
               def test_validation_rejects_stale_metadata(self):
-                  payload = {
-                      "meta": {"last_date": "2026-08-23"},
-                      "G": {"corse": {"d": [[1709, 2.25]]}},
-                      "S": {"corse": {"d": [[1708, 1.99]]}},
-                  }
-                  with self.assertRaisesRegex(ValueError, "meta.last_date mismatch"):
-                      c1_last_date.validate_last_date(payload)
-
+                  payload={'meta':{'last_date':'2026-08-23'},'G':{'corse':{'d':[[1709,2.25]]}},'S':{'corse':{'d':[[1708,1.99]]}}}
+                  with self.assertRaisesRegex(ValueError,'meta.last_date mismatch'): c1_last_date.validate_last_date(payload)
               def test_frontend_uses_utc_offsets(self):
-                  src = (ROOT / "app.js").read_text(encoding="utf-8")
-                  self.assertIn("const ORIGIN_MS = Date.UTC(2022,0,1);", src)
-                  self.assertIn("new Date(ORIGIN_MS + off*DAY_MS)", src)
-                  self.assertNotIn("d.setDate(d.getDate()+n)", src)
-
+                  src=(ROOT/'app.js').read_text(encoding='utf-8')
+                  self.assertIn('const ORIGIN_MS = Date.UTC(2022,0,1);',src)
+                  self.assertIn('new Date(ORIGIN_MS + off*DAY_MS)',src)
+                  self.assertNotIn('d.setDate(d.getDate()+n)',src)
               def test_ranking_uses_daily_series_not_meta_last_date(self):
-                  src = (ROOT / "freshness.js").read_text(encoding="utf-8")
-                  self.assertIn("const maxDate=daily.length?offsetToDate(daily[daily.length-1][0]):null;", src)
-                  self.assertNotIn("(DATA.meta&&DATA.meta.last_date)||(daily.length", src)
-
-
-          if __name__ == "__main__":
-              unittest.main()
+                  src=(ROOT/'freshness.js').read_text(encoding='utf-8')
+                  self.assertIn('const maxDate=daily.length?offsetToDate(daily[daily.length-1][0]):null;',src)
+                  self.assertNotIn('(DATA.meta&&DATA.meta.last_date)||(daily.length',src)
+          if __name__=='__main__': unittest.main()
           PY
 
-      - name: Repair current data metadata from actual daily series
-        shell: bash
+      - name: Repair current data metadata
         run: |
           python - <<'PY'
-          import json
-          import sys
+          import json,sys
           from pathlib import Path
-
-          sys.path.insert(0, 'scripts')
+          sys.path.insert(0,'scripts')
           import c1_last_date
-
-          p = Path('data.json')
-          data = json.loads(p.read_text(encoding='utf-8'))
-          old = ((data.get('meta') or {}).get('last_date'))
-          data['meta'] = c1_last_date.attach_last_date(data.get('meta'), data)
-          c1_last_date.validate_last_date(data)
-          new = data['meta']['last_date']
-          p.write_text(json.dumps(data, ensure_ascii=False, separators=(',', ':')), encoding='utf-8')
-          print(f'meta.last_date: {old!r} -> {new!r}')
+          p=Path('data.json'); data=json.loads(p.read_text(encoding='utf-8')); old=((data.get('meta') or {}).get('last_date'))
+          data['meta']=c1_last_date.attach_last_date(data.get('meta'),data); c1_last_date.validate_last_date(data)
+          p.write_text(json.dumps(data,ensure_ascii=False,separators=(',',':')),encoding='utf-8')
+          print(f"meta.last_date: {old!r} -> {data['meta']['last_date']!r}")
           PY
 
       - name: Run regression tests
-        shell: bash
         run: |
           python -m unittest tests.test_c1_ranking_dates -v
           python -m unittest tests.test_weekly_regional_ranking -v
 
       - name: Commit repaired production path
-        shell: bash
         run: |
           rm .github/workflows/_repair-c1-ranking-dates-once.yml
           git config user.name 'github-actions[bot]'
