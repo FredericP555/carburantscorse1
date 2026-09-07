@@ -3,7 +3,9 @@
 
 A green production workflow is not enough: business success requires the public
 ``data.json`` to be byte-for-byte identical to the repository copy that was validated.
-The verifier retries while Pages may still be deploying, then fails closed.
+The latest validated C1 release must also point to a commit carrying that same data,
+even when later code-only commits have moved ``main`` forward. The verifier retries
+while Pages may still be deploying, then fails closed.
 """
 from __future__ import annotations
 
@@ -49,6 +51,41 @@ def _decode_payload(blob: bytes, label: str) -> tuple[dict, str]:
     except ValueError as exc:
         raise BusinessSuccessError(f"{label} has invalid meta.last_date={raw_date!r}") from exc
     return payload, parsed.isoformat()
+
+
+def evaluate_release_link(
+    expected_bytes: bytes,
+    release_target_bytes: bytes,
+    *,
+    release_tag: str,
+    release_target: str,
+) -> dict:
+    """Prove that the C1 release target carries exactly the expected ``data.json``."""
+    if not release_tag:
+        raise BusinessSuccessError("missing C1 V2 release tag")
+    if not release_target:
+        raise BusinessSuccessError("missing C1 V2 release target")
+    _expected, expected_date = _decode_payload(expected_bytes, "expected data.json")
+    _release, release_date = _decode_payload(release_target_bytes, "release-target data.json")
+    expected_sha = sha256_bytes(expected_bytes)
+    release_sha = sha256_bytes(release_target_bytes)
+    if release_sha != expected_sha:
+        raise BusinessSuccessError(
+            "C1 release target does not carry the expected data.json: "
+            f"release={release_tag}, target={release_target}, "
+            f"expected_sha={expected_sha}, release_data_sha={release_sha}, "
+            f"expected_date={expected_date}, release_date={release_date}"
+        )
+    if release_date != expected_date:
+        raise BusinessSuccessError(
+            f"C1 release business date {release_date} != expected business date {expected_date}"
+        )
+    return {
+        "release_tag": release_tag,
+        "release_target": release_target,
+        "release_data_sha256": release_sha,
+        "release_data_through": release_date,
+    }
 
 
 def evaluate_publication(
@@ -176,6 +213,8 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--output", default="outputs/c1-business-success.json")
     p.add_argument("--commit", default=None)
     p.add_argument("--release-tag", default=os.environ.get("A4C_RELEASE_TAG"))
+    p.add_argument("--release-target", default=os.environ.get("A4C_RELEASE_TARGET"))
+    p.add_argument("--release-target-data", default=None)
     p.add_argument("--timeout-seconds", type=float, default=240)
     p.add_argument("--interval-seconds", type=float, default=5)
     return p.parse_args()
@@ -189,6 +228,22 @@ def main() -> None:
     expected_bytes = expected_path.read_bytes()
     commit = args.commit or _git_head()
 
+    release_link = None
+    if args.release_tag or args.release_target or args.release_target_data:
+        if not (args.release_tag and args.release_target and args.release_target_data):
+            raise BusinessSuccessError(
+                "release verification requires --release-tag, --release-target and --release-target-data"
+            )
+        release_path = Path(args.release_target_data)
+        if not release_path.is_file():
+            raise BusinessSuccessError(f"release-target data file not found: {release_path}")
+        release_link = evaluate_release_link(
+            expected_bytes,
+            release_path.read_bytes(),
+            release_tag=args.release_tag,
+            release_target=args.release_target,
+        )
+
     receipt = wait_for_publication(
         expected_bytes,
         page_url=args.page_url,
@@ -197,6 +252,8 @@ def main() -> None:
         timeout_seconds=args.timeout_seconds,
         interval_seconds=args.interval_seconds,
     )
+    if release_link:
+        receipt.update(release_link)
     out = Path(args.output)
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(receipt, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
