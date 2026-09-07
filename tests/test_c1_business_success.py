@@ -3,6 +3,7 @@
 These tests define the contract before the verifier implementation exists:
 - the public Pages JSON must be byte-for-byte identical to the expected main-branch data.json;
 - the published business date must match;
+- the release target must carry the same data.json even if later code-only commits moved main;
 - stale or malformed public content must fail closed;
 - temporary Pages lag may be retried, but persistent unavailability must fail.
 """
@@ -83,6 +84,32 @@ class BusinessSuccessEvaluationTests(unittest.TestCase):
                 bad_expected,
                 expected_commit="abc123",
                 page_url="https://example.test/data.json",
+            )
+
+
+class ReleaseLinkEvaluationTests(unittest.TestCase):
+    def test_release_target_may_be_older_commit_when_data_is_identical(self):
+        expected = payload("2026-09-06", marker=7)
+        link = business.evaluate_release_link(
+            expected,
+            expected,
+            release_tag="a4c-v2-shared-test",
+            release_target="data-commit-123",
+        )
+        self.assertEqual(link["release_tag"], "a4c-v2-shared-test")
+        self.assertEqual(link["release_target"], "data-commit-123")
+        self.assertEqual(link["release_data_sha256"], business.sha256_bytes(expected))
+        self.assertEqual(link["release_data_through"], "2026-09-06")
+
+    def test_release_target_with_different_data_fails_even_same_date(self):
+        expected = payload("2026-09-06", marker=7)
+        wrong_release_data = payload("2026-09-06", marker=8)
+        with self.assertRaises(business.BusinessSuccessError):
+            business.evaluate_release_link(
+                expected,
+                wrong_release_data,
+                release_tag="a4c-v2-shared-test",
+                release_target="wrong-data-commit",
             )
 
 
