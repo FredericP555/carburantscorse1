@@ -25,6 +25,9 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
+      - name: Run regression unit tests
+        run: PYTHONPATH=scripts:. python -m unittest discover -s tests -v
+
       - name: Verify station brand HTML parser
         run: python scripts/test_station_brands.py
 
@@ -42,6 +45,9 @@ jobs:
 
       - name: Build append-only candidate
         run: python scripts/update_data_append.py --input data.json --output data-candidate.json
+
+      - name: Fetch the C1-owned Rotterdam source required by the shared manifest
+        run: python scripts/fetch_ufip.py --output-dir outputs/ufip
 
       - name: Build shared 13/20 official snapshot
         run: python scripts/export_shared_c2_snapshot.py

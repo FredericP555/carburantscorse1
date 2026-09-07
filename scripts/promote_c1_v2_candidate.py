@@ -5,6 +5,9 @@ The builder never writes data.json. This guard checks the transition boundaries 
 before promotion. On recurring runs all already-published daily rows are immutable;
 weekly/monthly aggregates may only be rebuilt from the bucket containing the first newly
 appended daily date.
+
+P1 hardening also refreshes metadata derived from the actual candidate cutoff, then applies
+an independent fail-closed contract to the newly appended public tail.
 """
 from __future__ import annotations
 
@@ -15,6 +18,7 @@ from pathlib import Path
 
 import c1_bouclier_meta
 import c1_last_date
+import c1_v2_contracts
 import update_data_v2 as core
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -52,6 +56,22 @@ def main() -> None:
     candidate = json.loads(candidate_path.read_text(encoding="utf-8"))
     summary = json.loads(summary_path.read_text(encoding="utf-8"))
     baseline = json.loads(target_path.read_text(encoding="utf-8"))
+
+    # Canonicalize only metadata that is derived from the candidate itself.  This is done
+    # before validation so downstream bundle generation sees exactly the guarded metadata.
+    try:
+        candidate, summary = c1_v2_contracts.refresh_publication_metadata(
+            candidate, baseline, summary
+        )
+        c1_v2_contracts.validate_all(baseline, candidate)
+    except ValueError as exc:
+        raise SystemExit(f"Refusing C1 V2 candidate: {exc}") from exc
+    candidate_path.write_text(
+        json.dumps(candidate, ensure_ascii=False, separators=(",", ":")), encoding="utf-8"
+    )
+    summary_path.write_text(
+        json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
 
     v2 = ((candidate.get("meta") or {}).get("v2") or {})
     baseline_v2 = ((baseline.get("meta") or {}).get("v2") or {})
