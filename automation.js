@@ -22,6 +22,32 @@ function autoNumberFr(v, digits=1, sign=false) {
   return `${sign&&n>=0?'+':''}${n.toFixed(digits).replace('.',',')}`;
 }
 
+// ── Alignement des séries régionales sur leurs dates réelles ────────────────
+// app.js utilise la série Corse comme axe X commun. Les valeurs régionales doivent
+// donc être projetées sur cet axe par date, jamais par position dans le tableau.
+function autoSeriesLabel(point,res){
+  if(!point) return null;
+  return res==='m' ? point[0] : offsetToDate(point[0]);
+}
+
+function autoAlignedValues(carbuKey, serieName, res, valueIndex){
+  const labels=getLabels(carbuKey,res);
+  const byLabel=new Map();
+  getSeries(carbuKey,serieName,res).forEach(point=>{
+    const label=autoSeriesLabel(point,res);
+    if(label!=null) byLabel.set(label,point[valueIndex]);
+  });
+  return labels.map(label=>byLabel.has(label)?byLabel.get(label):null);
+}
+
+getTTC=function(carbuKey,serieName,res){
+  return autoAlignedValues(carbuKey,serieName,res,1);
+};
+
+getHT=function(carbuKey,serieName,res){
+  return autoAlignedValues(carbuKey,serieName,res,2);
+};
+
 // ── Repères géopolitiques / institutionnels ──────────────────────────────────
 // Les repères ne supposent pas qu'un événement est terminé : ils matérialisent des dates
 // utiles pour lire les ruptures de prix. Pour l'Iran, on distingue désormais le début des
