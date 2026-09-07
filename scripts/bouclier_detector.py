@@ -39,10 +39,19 @@ MAX_AGE_DAYS = core.MAX_FFILL_DAYS
 DYNAMIC_START_YEAR = 2026
 HISTORICAL_RULE_FROZEN_THROUGH = date(2025, 12, 31)
 
-REGISTRY = json.loads(Path('config/total_corse_stations.json').read_text(encoding='utf-8'))
-CURRENT_TOTAL_IDS = set(REGISTRY['stations'])
-HISTORICAL_TOTAL_IDS = set(REGISTRY.get('historical_aliases', {}))
+# Current brand classification comes from the common official Corsica registry. Keep the old
+# Total-only file solely for historical aliases that are no longer current official station IDs.
+BRAND_REGISTRY = json.loads(Path('config/corse_station_brands.json').read_text(encoding='utf-8'))
+LEGACY_TOTAL_REGISTRY = json.loads(Path('config/total_corse_stations.json').read_text(encoding='utf-8'))
+CURRENT_TOTAL_IDS = {
+    str(sid)
+    for sid, station in (BRAND_REGISTRY.get('stations') or {}).items()
+    if station.get('brand_group') == 'TotalEnergies'
+}
+HISTORICAL_TOTAL_IDS = set(LEGACY_TOTAL_REGISTRY.get('historical_aliases', {}))
 TOTAL_IDS = CURRENT_TOTAL_IDS | HISTORICAL_TOTAL_IDS
+if not CURRENT_TOTAL_IDS:
+    raise RuntimeError('Official Corsica brand registry contains no TotalEnergies station')
 
 # Recomputed from the official historical stocks with this exact rule on 19 Aug 2026.
 HISTORICAL_RULE_RANGES = {

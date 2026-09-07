@@ -33,6 +33,16 @@ class BouclierRuleTests(unittest.TestCase):
         self.assertEqual(bd.MAX_GAP_DAYS, 1)
         self.assertEqual(bd.MARKET_QUANTILE, 0.75)
 
+    def test_total_ids_come_from_common_brand_registry(self):
+        expected={
+            sid for sid, station in bd.BRAND_REGISTRY['stations'].items()
+            if station.get('brand_group') == 'TotalEnergies'
+        }
+        self.assertEqual(bd.CURRENT_TOTAL_IDS, expected)
+        self.assertEqual(len(bd.CURRENT_TOTAL_IDS), 47)
+        self.assertIn('20213003', bd.HISTORICAL_TOTAL_IDS)
+        self.assertIn('20213006', bd.HISTORICAL_TOTAL_IDS)
+
 
 if __name__ == '__main__':
     unittest.main()
