@@ -1,0 +1,119 @@
+name: Watchdog C1 weekly publication
+
+on:
+  schedule:
+    # 09:17 and 10:17 Europe/Paris across CET/CEST.
+    - cron: '17 7 * * 1'
+    - cron: '17 8 * * 1'
+    - cron: '17 9 * * 1'
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/watchdog-weekly.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: write
+
+jobs:
+  watchdog:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Select watchdog slot
+        id: clock
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          EVENT_SCHEDULE: ${{ github.event.schedule }}
+        run: |
+          python - <<'PY'
+          import os
+          from datetime import datetime
+          from zoneinfo import ZoneInfo
+
+          if os.environ.get('EVENT_NAME') in {'workflow_dispatch', 'push'}:
+              selected = True
+          else:
+              schedule = os.environ.get('EVENT_SCHEDULE', '')
+              try:
+                  minute, hour, _, _, dow = schedule.split()
+                  minute = int(minute)
+                  hour = int(hour)
+                  dow = int(dow)
+              except Exception:
+                  minute, hour, dow = -1, -1, -1
+
+              offset = int(datetime.now(ZoneInfo('Europe/Paris')).utcoffset().total_seconds() // 3600)
+              shifted = hour + offset
+              local_hour = shifted % 24
+              local_dow = (dow + (shifted // 24)) % 7
+              selected = minute == 17 and local_dow == 1 and local_hour in {9, 10}
+
+          with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as fh:
+              fh.write(f"selected={'true' if selected else 'false'}\n")
+          print('Watchdog slot selected:', selected)
+          PY
+
+      - name: Check for a validated C1 release today
+        if: steps.clock.outputs.selected == 'true'
+        id: state
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          today=$(TZ=Europe/Paris date +%F)
+          latest_today=$(gh release list \
+            --repo FredericP555/carburantscorse1 \
+            --limit 50 \
+            --json tagName,publishedAt \
+            --jq --arg today "$today" '[.[] | select(.tagName | startswith("a4c-v2-shared-")) | select((.publishedAt | fromdateiso8601 | strftime("%Y-%m-%d")) == $today)] | sort_by(.publishedAt) | reverse | .[0].tagName // ""')
+
+          active=$(gh run list \
+            --repo FredericP555/carburantscorse1 \
+            --workflow update-weekly.yml \
+            --limit 20 \
+            --json status \
+            --jq '[.[] | select(.status != "completed")] | length')
+
+          if [ -n "$latest_today" ]; then
+            dispatch=false
+            reason="validated C1 release already exists today: $latest_today"
+          elif [ "$active" -gt 0 ]; then
+            dispatch=false
+            reason="a full C1 update is already queued or running"
+          else
+            dispatch=true
+            reason="no validated C1 release exists today and no full C1 update is active"
+          fi
+
+          echo "dispatch=$dispatch" >> "$GITHUB_OUTPUT"
+          echo "release_today=$latest_today" >> "$GITHUB_OUTPUT"
+          echo "active_runs=$active" >> "$GITHUB_OUTPUT"
+          echo "reason=$reason" >> "$GITHUB_OUTPUT"
+
+          echo "$reason"
+
+      - name: Dispatch full C1 production update
+        if: steps.clock.outputs.selected == 'true' && steps.state.outputs.dispatch == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh workflow run update-weekly.yml \
+            --repo FredericP555/carburantscorse1 \
+            --ref "${{ github.event.repository.default_branch }}"
+          echo "C1 weekly production dispatched by watchdog."
+
+      - name: Write watchdog summary
+        if: steps.clock.outputs.selected == 'true' && always()
+        run: |
+          {
+            echo '## C1 weekly watchdog'
+            echo "- Release already published today: ${{ steps.state.outputs.release_today || 'none' }}"
+            echo "- Active full C1 runs: ${{ steps.state.outputs.active_runs || '0' }}"
+            echo "- Full C1 dispatched: ${{ steps.state.outputs.dispatch == 'true' }}"
+            echo "- Decision: ${{ steps.state.outputs.reason }}"
+          } >> "$GITHUB_STEP_SUMMARY"
