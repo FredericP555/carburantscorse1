@@ -24,32 +24,73 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 55
     steps:
-      - name: Select the 07:07 Europe/Paris slot
+      - name: Select the 07:07 Europe/Paris slot and avoid a duplicate scheduled publication
         id: clock
         env:
           EVENT_NAME: ${{ github.event_name }}
           EVENT_SCHEDULE: ${{ github.event.schedule }}
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
         run: |
           python - <<'PY'
+          import json
           import os
+          import urllib.request
           from datetime import datetime
           from zoneinfo import ZoneInfo
-          out=os.environ['GITHUB_OUTPUT']
-          if os.environ.get('EVENT_NAME') == 'workflow_dispatch':
-              run=True
+
+          event = os.environ.get('EVENT_NAME')
+          paris = datetime.now(ZoneInfo('Europe/Paris'))
+
+          if event == 'workflow_dispatch':
+              run = True
           else:
-              paris=datetime.now(ZoneInfo('Europe/Paris'))
-              offset_hours=int(paris.utcoffset().total_seconds()//3600)
-              expected_utc_hour=(7-offset_hours)%24
-              schedule=os.environ.get('EVENT_SCHEDULE','')
+              offset_hours = int(paris.utcoffset().total_seconds() // 3600)
+              expected_utc_hour = (7 - offset_hours) % 24
+              schedule = os.environ.get('EVENT_SCHEDULE', '')
               try:
-                  scheduled_hour=int(schedule.split()[1])
+                  scheduled_hour = int(schedule.split()[1])
               except Exception:
-                  scheduled_hour=-1
-              run=(scheduled_hour==expected_utc_hour)
-          with open(out,'a',encoding='utf-8') as f:
+                  scheduled_hour = -1
+              run = scheduled_hour == expected_utc_hour
+
+              if run:
+                  try:
+                      req = urllib.request.Request(
+                          f"https://api.github.com/repos/{os.environ['REPOSITORY']}/releases?per_page=20",
+                          headers={
+                              'Accept': 'application/vnd.github+json',
+                              'Authorization': f"Bearer {os.environ['GH_TOKEN']}",
+                              'X-GitHub-Api-Version': '2022-11-28',
+                              'User-Agent': 'A4C-weekly-guard',
+                          },
+                      )
+                      with urllib.request.urlopen(req, timeout=20) as response:
+                          releases = json.load(response)
+
+                      today = paris.date()
+                      already_published = False
+                      for release in releases:
+                          tag = str(release.get('tag_name') or '')
+                          published = release.get('published_at')
+                          if not tag.startswith('a4c-v2-shared-') or not published:
+                              continue
+                          stamp = datetime.fromisoformat(published.replace('Z', '+00:00')).astimezone(ZoneInfo('Europe/Paris'))
+                          if stamp.date() == today:
+                              already_published = True
+                              print(f'Validated C1 release already published today: {tag}')
+                              break
+
+                      if already_published:
+                          run = False
+                  except Exception as exc:
+                      # Reliability first: if the duplicate guard cannot be checked,
+                      # let the scheduled production run rather than miss the update.
+                      print(f'WARNING: duplicate-publication guard unavailable: {exc}')
+
+          with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as f:
               f.write(f"run={'true' if run else 'false'}\n")
-          print('Run selected:',run)
+          print('Run selected:', run)
           PY
 
       - name: Checkout triggering ref
