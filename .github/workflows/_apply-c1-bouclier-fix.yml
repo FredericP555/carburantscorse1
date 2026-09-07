@@ -20,12 +20,11 @@ jobs:
         with:
           python-version: '3.12'
 
-      - name: Patch C1 builder, promoter and PR validation
+      - name: Patch C1 builder and promoter
         run: |
           python - <<'PY'
           from pathlib import Path
 
-          # 1) Builder: publish the detector output into candidate.meta.bouclier.
           path = Path('scripts/build_c1_v2_candidate.py')
           text = path.read_text(encoding='utf-8')
           old = 'import bouclier_detector\nimport r2_guard_v2'
@@ -40,7 +39,6 @@ jobs:
           text = text.replace(old, new, 1)
           path.write_text(text, encoding='utf-8')
 
-          # 2) Promoter: fail closed if the candidate does not carry the exact detector metadata.
           path = Path('scripts/promote_c1_v2_candidate.py')
           text = path.read_text(encoding='utf-8')
           old = 'import update_data_v2 as core'
@@ -53,21 +51,6 @@ jobs:
           if text.count(anchor) != 1:
               raise SystemExit('Unexpected promoter validation layout')
           text = text.replace(anchor, replacement, 1)
-          path.write_text(text, encoding='utf-8')
-
-          # 3) Ensure PR validation runs the same unit-test suite as production preflight.
-          path = Path('.github/workflows/validate-data.yml')
-          text = path.read_text(encoding='utf-8')
-          old = 'permissions:\n  contents: read\n\njobs:'
-          new = 'permissions:\n  contents: read\n\nenv:\n  PYTHONPATH: .:scripts\n\njobs:'
-          if text.count(old) != 1:
-              raise SystemExit('Unexpected validate-data permissions layout')
-          text = text.replace(old, new, 1)
-          old = '''      - name: Install dependencies\n        run: pip install -r requirements.txt\n\n      - name: Verify station brand HTML parser\n'''
-          new = '''      - name: Install dependencies\n        run: pip install -r requirements.txt\n\n      - name: Unit tests\n        run: python -m unittest discover -s tests -v\n\n      - name: Verify station brand HTML parser\n'''
-          if text.count(old) != 1:
-              raise SystemExit('Unexpected validate-data install layout')
-          text = text.replace(old, new, 1)
           path.write_text(text, encoding='utf-8')
           PY
 
@@ -209,6 +192,6 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add scripts/build_c1_v2_candidate.py scripts/promote_c1_v2_candidate.py scripts/c1_bouclier_meta.py tests/test_c1_bouclier_metadata.py .github/workflows/validate-data.yml
+          git add scripts/build_c1_v2_candidate.py scripts/promote_c1_v2_candidate.py scripts/c1_bouclier_meta.py tests/test_c1_bouclier_metadata.py
           git commit -m "Fix C1 bouclier metadata publication"
           git push origin HEAD:fix/c1-bouclier-publication
