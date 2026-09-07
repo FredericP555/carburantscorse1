@@ -1,20 +1,21 @@
 #!/usr/bin/env python3
 """Fail-closed P1 contracts for C1 V2 candidates.
 
-The upstream parser already filters unreliable station declarations.  This module is a
+The upstream parser already filters unreliable station declarations. This module is a
 second, independent publication boundary: even if a malformed fixture reaches promotion,
 new public rows must remain plausible, contiguous, mutually aligned and internally
-coherent.  It also refreshes/validates publication metadata that must follow the actual
+coherent. It also refreshes/validates publication metadata that must follow the actual
 candidate cutoff.
 """
 from __future__ import annotations
 
 from copy import deepcopy
-from datetime import date, timedelta
+from datetime import date
 import math
 
 import c1_last_date
 import enrich_data_meta
+import shield_phase_v2
 import station_audit
 import update_data_v2 as core
 
@@ -90,7 +91,6 @@ def _validate_new_row(short: str, region: str, row: list) -> None:
 def validate_appended_daily_contract(baseline: dict, candidate: dict) -> None:
     """Validate only the newly appended daily tail, independently of the builder."""
     target_off = _target_offset(candidate)
-    endpoints = []
     first_new_by_fuel: dict[str, int | None] = {}
 
     for short in REQUIRED_FUELS:
@@ -105,7 +105,6 @@ def validate_appended_daily_contract(baseline: dict, candidate: dict) -> None:
             new_rows = new_regions[region].get("d") or []
             old_last = _last_offset(old_rows, f"{short}/{region}")
             new_last = _last_offset(new_rows, f"{short}/{region}")
-            endpoints.append((short, region, new_last))
             if new_last != target_off:
                 _fail(
                     f"{short}/{region}: isolated daily endpoint {new_last}; "
@@ -116,8 +115,6 @@ def validate_appended_daily_contract(baseline: dict, candidate: dict) -> None:
 
             old_map = _row_map(old_rows)
             new_map = _row_map(new_rows)
-            # Published rows are checked elsewhere for byte-for-byte immutability; here the
-            # new tail must start exactly on the next calendar day and contain no hole.
             if new_last > old_last:
                 expected = list(range(old_last + 1, new_last + 1))
                 actual = sorted(off for off in new_map if off > old_last)
@@ -130,18 +127,15 @@ def validate_appended_daily_contract(baseline: dict, candidate: dict) -> None:
             elif target_off > old_last:
                 _fail(f"{short}/{region}: series did not advance to publication cutoff")
 
-            # A candidate may not silently insert a row inside the already-published key set.
             if any(off <= old_last and off not in old_map for off in new_map):
                 _fail(f"{short}/{region}: inserted historical daily key")
 
         first_new_by_fuel[short] = fuel_first_new
 
-    # Gazole and SP95 must advance over the same public window.
     starts = {v for v in first_new_by_fuel.values() if v is not None}
     if len(starts) > 1:
         _fail(f"Gazole/SP95 appended windows diverge: {first_new_by_fuel}")
 
-    # moy_regions is the equal-weight mean of the 12 published mainland regional means.
     for short in REQUIRED_FUELS:
         first_new = first_new_by_fuel[short]
         if first_new is None:
@@ -189,6 +183,22 @@ def validate_publication_metadata(candidate: dict) -> None:
         _fail(f"station_audit.as_of={audit.get('as_of')!r} != {last_date}")
 
 
+def _expected_phase_json(bmeta: dict, fuel: str) -> list[dict]:
+    try:
+        phases = shield_phase_v2.phases_from_bouclier_metadata(bmeta).get(fuel, [])
+    except (KeyError, TypeError, ValueError) as exc:
+        raise ValueError(f"bouclier.{fuel}: cannot derive cap phases") from exc
+    return [
+        {
+            "d1": p.started_on.isoformat(),
+            "d2": p.ended_on.isoformat(),
+            "cap": p.cap,
+            "phase_id": f"{fuel}:{p.started_on.isoformat()}:{p.cap:.3f}",
+        }
+        for p in phases
+    ]
+
+
 def validate_bouclier_contract(meta: dict) -> None:
     last_date = meta.get("last_date")
     bmeta = meta.get("bouclier")
@@ -196,6 +206,7 @@ def validate_bouclier_contract(meta: dict) -> None:
         _fail("missing bouclier metadata")
     required = (
         "ranges",
+        "phases",
         "current_active",
         "current_active_since",
         "current_cap",
@@ -231,6 +242,13 @@ def validate_bouclier_contract(meta: dict) -> None:
             if previous_end is not None and start <= previous_end:
                 _fail(f"bouclier.{fuel}: overlapping/unordered ranges")
             previous_end = end
+
+        expected_phases = _expected_phase_json(bmeta, fuel)
+        if node["phases"] != expected_phases:
+            _fail(
+                f"bouclier.{fuel}.phases inconsistent with ranges/cap schedule: "
+                f"expected={expected_phases!r} actual={node['phases']!r}"
+            )
         if not isinstance(node["rule"], dict) or not node["rule"]:
             _fail(f"bouclier.{fuel}.rule missing")
         for field in ("latest_total_stations", "latest_non_total_stations", "latest_at_cap_count"):
