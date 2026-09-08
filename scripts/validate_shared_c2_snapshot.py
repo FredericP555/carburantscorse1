@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Validate the complete C1 -> C2 shared bundle before publishing a release.
 
-This runs on every selected weekly cycle, including official-data no-op weeks.
-It validates integrity and the business contract needed by C2.
+This runs on every selected weekly cycle, including official-data no-op weeks. It validates
+integrity and the business contract needed by C2, including the semantics of the shared UFIP
+Rotterdam reference.
 """
 from __future__ import annotations
 
@@ -99,6 +100,25 @@ def validate_events(meta: dict) -> None:
         raise RuntimeError("Official event kind counts are inconsistent with asset")
 
 
+def validate_rotterdam_contract(rotterdam: dict) -> None:
+    if not isinstance(rotterdam, dict) or rotterdam.get("single_download") is not True:
+        raise RuntimeError("Invalid Rotterdam shared metadata")
+    required = {
+        "unit": "EUR/L",
+        "reference_source": "Thomson-Reuters",
+        "smoothing": "5-day moving average",
+        "value_column": "rotterdam_eur_l",
+    }
+    for field, expected in required.items():
+        if rotterdam.get(field) != expected:
+            raise RuntimeError(
+                f"Rotterdam source contract mismatch for {field}: expected={expected!r} actual={rotterdam.get(field)!r}"
+            )
+    provider = str(rotterdam.get("provider") or "").casefold()
+    if "ufip" not in provider:
+        raise RuntimeError("Rotterdam source contract has no UFIP provider")
+
+
 def main() -> None:
     for path in (META, SNAPSHOT, EVENTS, OBSERVED, DAILY, BRANDS):
         if not path.exists() or path.stat().st_size == 0:
@@ -120,8 +140,7 @@ def main() -> None:
     validate_events(meta)
 
     rotterdam = meta.get("rotterdam")
-    if not isinstance(rotterdam, dict) or rotterdam.get("single_download") is not True:
-        raise RuntimeError("Invalid Rotterdam shared metadata")
+    validate_rotterdam_contract(rotterdam)
     if sha256(OBSERVED) != rotterdam.get("observed_sha256"):
         raise RuntimeError("Rotterdam observed SHA mismatch")
     if sha256(DAILY) != rotterdam.get("daily_sha256"):
@@ -155,7 +174,7 @@ def main() -> None:
     if not isinstance(bouclier, dict):
         raise RuntimeError("Missing effective-shield metadata")
     validate_phases(bouclier)
-    print("Shared C1 -> C2 release contract with official events: OK")
+    print("Shared C1 -> C2 release contract with official events and UFIP semantics: OK")
 
 
 if __name__ == "__main__":
