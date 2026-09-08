@@ -14,7 +14,12 @@ import math
 from datetime import date, timedelta
 from pathlib import Path
 from statistics import mean
+import sys
 from typing import Mapping
+
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
 from a4c_common.ufip import ROTTERDAM_REFERENCE_SOURCE, ROTTERDAM_SMOOTHING, ROTTERDAM_UNIT
 
