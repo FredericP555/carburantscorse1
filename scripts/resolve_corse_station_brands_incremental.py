@@ -1,13 +1,11 @@
 #!/usr/bin/env python3
-"""Resolve only new/unresolved Corsica station IDs during the price update.
+"""Incrementally maintain the Corsica station-brand registry.
 
-Known resolved IDs are never refetched from prix-carburants.gouv.fr. The annual official
-price stock already downloaded by the weekly pipeline supplies the station IDs; only an ID
-missing from the compact registry (or still unresolved) triggers one station-page lookup.
-
-Only IDs whose latest declaration falls inside the dashboard's current 45-day carry window are
-considered active. Disappeared IDs are retained in the registry for historical series and merely
-marked inactive.
+The annual official price stock supplies the station IDs. New/unresolved IDs are always queried
+on the official station page. Resolved active IDs are also reverified on a bounded schedule so a
+stable station ID cannot keep a stale brand forever. Brand changes are temporal: the previous
+classification is closed the day before the new verification and remains available in
+``brand_history``. Published historical price series are never rewritten by this resolver.
 """
 from __future__ import annotations
 
@@ -31,6 +29,8 @@ from update_corse_station_brands import (
 
 ROOT = Path(__file__).resolve().parents[1]
 WORKERS = 4
+BRAND_REVERIFY_DAYS = 90
+BRAND_REVERIFY_LIMIT = 12
 
 
 def current_corsica_ids(year: int) -> set[str]:
@@ -62,10 +62,7 @@ def current_corsica_ids(year: int) -> set[str]:
 
 def load_registry(path: Path) -> dict:
     if not path.exists():
-        return {
-            "schema": "a4c-corsica-station-brands-v2",
-            "stations": {},
-        }
+        return {"schema": "a4c-corsica-station-brands-v2", "stations": {}}
     payload = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(payload.get("stations"), dict):
         raise RuntimeError(f"Invalid station registry: {path}")
@@ -73,16 +70,52 @@ def load_registry(path: Path) -> dict:
 
 
 def ids_to_resolve(current_ids: set[str], stations: dict[str, dict]) -> list[str]:
-    """Only brandless or unknown current IDs need an official station-page request."""
+    """Backward-compatible helper: only new/unresolved active IDs."""
     result = []
     for station_id in sorted(current_ids):
         entry = stations.get(station_id)
-        if not entry:
-            result.append(station_id)
-            continue
-        if not str(entry.get("enseigne") or "").strip() or entry.get("segment") == "inconnu":
+        if not entry or not str(entry.get("enseigne") or "").strip() or entry.get("segment") == "inconnu":
             result.append(station_id)
     return result
+
+
+def _verified_day(entry: dict) -> date | None:
+    raw = str(entry.get("verified_at") or "").strip()
+    if not raw:
+        return None
+    try:
+        return date.fromisoformat(raw[:10])
+    except ValueError:
+        return None
+
+
+def ids_to_fetch(
+    current_ids: set[str],
+    stations: dict[str, dict],
+    *,
+    today: date | None = None,
+    reverify_days: int = BRAND_REVERIFY_DAYS,
+    limit: int = BRAND_REVERIFY_LIMIT,
+) -> list[str]:
+    """Return new/unresolved/returning IDs plus a bounded oldest-first stale recheck set."""
+    today = today or date.today()
+    mandatory: set[str] = set(ids_to_resolve(current_ids, stations))
+    stale: list[tuple[date, str]] = []
+    for station_id in sorted(current_ids):
+        entry = stations.get(station_id)
+        if not entry:
+            continue
+        if not bool(entry.get("active", True)):
+            mandatory.add(station_id)
+            continue
+        if station_id in mandatory:
+            continue
+        verified = _verified_day(entry)
+        if verified is None or (today - verified).days >= reverify_days:
+            stale.append((verified or date.min, station_id))
+    stale.sort(key=lambda item: (item[0], item[1]))
+    selected_stale = [station_id for _verified, station_id in stale[: max(0, int(limit))]]
+    return sorted(mandatory) + [sid for sid in selected_stale if sid not in mandatory]
 
 
 def _apply_explicit_corrections(
@@ -91,10 +124,7 @@ def _apply_explicit_corrections(
     by_id: dict[str, dict],
     by_brand: dict[str, dict],
 ) -> bool:
-    """Apply corrections to known IDs without rerunning automatic classification."""
     brand = str(entry.get("enseigne") or "")
-    # Preserve a known station's automatic classification. Only an explicit correction may
-    # change it without a new station ID; station-ID correction has final priority.
     correction = None
     brand_correction = by_brand.get(_norm(brand))
     if brand_correction:
@@ -115,18 +145,89 @@ def _apply_explicit_corrections(
     return changed
 
 
+def _historical_brand_record(entry: dict, *, valid_to: date) -> dict | None:
+    brand = str(entry.get("enseigne") or "").strip()
+    if not brand and entry.get("segment") in {None, "", "inconnu"}:
+        return None
+    valid_from = str(entry.get("brand_valid_from") or entry.get("first_seen") or "").strip()
+    if not valid_from:
+        return None
+    return {
+        "enseigne": brand,
+        "segment": entry.get("segment") or "inconnu",
+        "detail": entry.get("detail") or "inconnu",
+        "classification_source": entry.get("classification_source") or "auto",
+        "brand_source": entry.get("brand_source") or "officiel",
+        "valid_from": valid_from,
+        "valid_to": valid_to.isoformat(),
+        "verified_at": entry.get("verified_at") or "",
+    }
+
+
+def _resolved_entry(
+    station_id: str,
+    old: dict,
+    brand: str,
+    *,
+    by_id: dict[str, dict],
+    by_brand: dict[str, dict],
+    today: date,
+    now: datetime,
+) -> dict:
+    segment, detail, classification_source = classify_station(station_id, brand, by_id, by_brand)
+    history = [dict(item) for item in (old.get("brand_history") or []) if isinstance(item, dict)]
+    old_identity = (
+        str(old.get("enseigne") or "").strip(),
+        str(old.get("segment") or ""),
+        str(old.get("detail") or ""),
+        str(old.get("classification_source") or ""),
+    )
+    new_identity = (brand.strip(), segment, detail, classification_source)
+    if old and old_identity != new_identity:
+        previous = _historical_brand_record(old, valid_to=today - timedelta(days=1))
+        if previous is not None:
+            history.append(previous)
+        valid_from = today.isoformat()
+    else:
+        valid_from = str(old.get("brand_valid_from") or old.get("first_seen") or today.isoformat())
+
+    return {
+        "enseigne": brand,
+        "segment": segment,
+        "detail": detail,
+        "classification_source": classification_source,
+        "brand_source": "officiel",
+        "active": True,
+        "first_seen": old.get("first_seen") or today.isoformat(),
+        "last_seen": today.isoformat(),
+        "verified_at": now.isoformat(),
+        "brand_valid_from": valid_from,
+        "brand_history": history,
+    }
+
+
 def resolve_incremental(
     registry: dict,
     current_ids: set[str],
     corrections_path: Path,
     *,
     fetcher: Callable[[str], tuple[str | None, str | None]] = fetch_brand,
+    today: date | None = None,
+    now: datetime | None = None,
+    reverify_days: int = BRAND_REVERIFY_DAYS,
+    reverify_limit: int = BRAND_REVERIFY_LIMIT,
 ) -> tuple[dict, dict]:
     stations = {str(k): dict(v) for k, v in (registry.get("stations") or {}).items()}
     by_id, by_brand = load_corrections(corrections_path)
-    today = date.today().isoformat()
-    now = datetime.now(timezone.utc).isoformat()
-    pending = ids_to_resolve(current_ids, stations)
+    today = today or date.today()
+    now = now or datetime.now(timezone.utc)
+    pending = ids_to_fetch(
+        current_ids,
+        stations,
+        today=today,
+        reverify_days=reverify_days,
+        limit=reverify_limit,
+    )
 
     def fetch_one(station_id: str):
         return station_id, fetcher(station_id)
@@ -139,14 +240,10 @@ def resolve_incremental(
     changed = False
     errors: dict[str, str] = {}
 
-    # Preserve every historical ID. Only active state and explicit corrections may change for
-    # already-known resolved IDs; their official brand page is not requested again.
     for station_id, entry in stations.items():
         should_be_active = station_id in current_ids
         if bool(entry.get("active")) != should_be_active:
             entry["active"] = should_be_active
-            if should_be_active:
-                entry["last_seen"] = today
             changed = True
         if _apply_explicit_corrections(station_id, entry, by_id, by_brand):
             changed = True
@@ -155,20 +252,21 @@ def resolve_incremental(
         old = stations.get(station_id, {})
         brand, error = fetched.get(station_id, (None, "not fetched"))
         if brand:
-            segment, detail, classification_source = classify_station(
-                station_id, brand, by_id, by_brand
+            new_entry = _resolved_entry(
+                station_id,
+                old,
+                brand,
+                by_id=by_id,
+                by_brand=by_brand,
+                today=today,
+                now=now,
             )
-            new_entry = {
-                "enseigne": brand,
-                "segment": segment,
-                "detail": detail,
-                "classification_source": classification_source,
-                "brand_source": "officiel",
-                "active": True,
-                "first_seen": old.get("first_seen") or today,
-                "last_seen": today,
-                "verified_at": now,
-            }
+        elif str(old.get("enseigne") or "").strip() and old.get("segment") != "inconnu":
+            # A transient reread failure must not erase a previously verified identity.
+            errors[station_id] = error or "official brand unavailable during reverification"
+            new_entry = dict(old)
+            new_entry["active"] = True
+            new_entry["last_seen"] = today.isoformat()
         else:
             errors[station_id] = error or "official brand unavailable"
             new_entry = {
@@ -178,9 +276,11 @@ def resolve_incremental(
                 "classification_source": old.get("classification_source") or "auto",
                 "brand_source": "non_resolu",
                 "active": True,
-                "first_seen": old.get("first_seen") or today,
-                "last_seen": today,
+                "first_seen": old.get("first_seen") or today.isoformat(),
+                "last_seen": today.isoformat(),
                 "verified_at": old.get("verified_at") or "",
+                "brand_valid_from": old.get("brand_valid_from") or today.isoformat(),
+                "brand_history": list(old.get("brand_history") or []),
             }
         if stations.get(station_id) != new_entry:
             stations[station_id] = new_entry
@@ -201,13 +301,16 @@ def resolve_incremental(
         "schema": "a4c-corsica-station-brands-v2",
         "source": {
             "station_ids": "official annual fuel-price stock already used by the A4C update",
-            "enseigne": "official prix-carburants.gouv.fr station detail HTML, queried only for new/unresolved IDs",
-            "note": "Known resolved IDs are not refetched; disappeared IDs remain for historical classification.",
+            "enseigne": "official prix-carburants.gouv.fr station detail HTML",
+            "note": "New/unresolved/returning IDs are queried immediately; resolved active IDs are reverified oldest-first on a bounded 90-day policy. Brand changes are prospective and previous periods remain in brand_history.",
         },
         "classification": {
             "segments": ["gms_lowcost", "traditionnel", "inconnu"],
             "unknown_policy": "inconnu is excluded from network comparisons",
             "corrections_file": str(corrections_path.relative_to(ROOT)) if corrections_path.is_relative_to(ROOT) else str(corrections_path),
+            "brand_reverify_days": reverify_days,
+            "brand_reverify_limit_per_run": reverify_limit,
+            "temporal_policy": "a detected brand/classification change becomes valid on its verification date; earlier periods are preserved",
         },
         "current_station_count": len(current_ids),
         "verified_brand_count": sum(1 for entry in active_entries if entry.get("enseigne")),
@@ -218,14 +321,14 @@ def resolve_incremental(
         "stations": dict(sorted(stations.items())),
     })
     if changed:
-        result["generated_at"] = now
+        result["generated_at"] = now.isoformat()
 
     summary = {
         "changed": changed,
         "current_station_count": len(current_ids),
         "known_before": len(registry.get("stations") or {}),
         "brand_fetch_count": len(pending),
-        "resolved_this_run": len(pending) - len(errors),
+        "resolved_this_run": sum(1 for sid in pending if fetched.get(sid, (None, None))[0]),
         "unresolved_this_run": len(errors),
         "unresolved_ids": sorted(errors),
     }
