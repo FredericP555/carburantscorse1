@@ -41,7 +41,9 @@ HISTORICAL_RULE_FROZEN_THROUGH = date(2025, 12, 31)
 
 REGISTRY = json.loads(Path('config/total_corse_stations.json').read_text(encoding='utf-8'))
 CURRENT_TOTAL_IDS = set(REGISTRY['stations'])
-HISTORICAL_TOTAL_IDS = set(REGISTRY.get('historical_aliases', {}))
+# Historical ids remain separate station identities. site_successions is documentary only
+# and is deliberately not consumed here: no price/state is ever transferred to a successor id.
+HISTORICAL_TOTAL_IDS = set(REGISTRY.get('historical_total_ids', []))
 TOTAL_IDS = CURRENT_TOTAL_IDS | HISTORICAL_TOTAL_IDS
 
 # Recomputed from the official historical stocks with this exact rule on 19 Aug 2026.
