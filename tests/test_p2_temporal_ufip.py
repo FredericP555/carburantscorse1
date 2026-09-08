@@ -7,7 +7,7 @@ import unittest
 
 import pandas as pd
 
-from a4c_common.ufip import validate_ufip_source_contract
+from a4c_common.ufip import _fetch_validated_contract_page, validate_ufip_source_contract
 from scripts.resolve_corse_station_brands_incremental import ids_to_fetch, resolve_incremental
 from scripts.ufip_retry_policy import should_retry_week
 
@@ -85,6 +85,38 @@ class UfipContractTests(unittest.TestCase):
             validate_ufip_source_contract("Cotations Rotterdam (€ /tonne) Source : Thomson-Reuters")
         with self.assertRaises(RuntimeError):
             validate_ufip_source_contract("Cotations Rotterdam (€ /litre) Source : Thomson-Reuters")
+
+    def test_contract_page_retries_once_with_browser_headers(self):
+        good = "<input name='ufp_token' value='abc'> Cotations Rotterdam (€ /litre) Source : Thomson-Reuters (moyennes mobiles sur 5 jours)"
+
+        class Response:
+            def __init__(self, text): self.text = text
+            def raise_for_status(self): return None
+
+        class Session:
+            def __init__(self): self.calls = []
+            def get(self, url, **kwargs):
+                self.calls.append((url, kwargs))
+                return Response("<html>temporary minimal page</html>" if len(self.calls) == 1 else good)
+
+        session = Session()
+        response = _fetch_validated_contract_page(session, timeout=5)
+        self.assertIsInstance(response, Response)
+        self.assertEqual(len(session.calls), 2)
+        retry_headers = session.calls[1][1]["headers"]
+        self.assertIn("Mozilla/5.0", retry_headers["User-Agent"])
+        self.assertIn("fr", retry_headers["Accept-Language"])
+
+    def test_contract_page_still_fails_closed_after_browser_retry(self):
+        class Response:
+            text = "<html>no documented Rotterdam semantics</html>"
+            def raise_for_status(self): return None
+
+        class Session:
+            def get(self, url, **kwargs): return Response()
+
+        with self.assertRaises(RuntimeError):
+            _fetch_validated_contract_page(Session(), timeout=5)
 
     def test_retry_detects_same_date_value_correction(self):
         week = date(2026, 8, 31)
