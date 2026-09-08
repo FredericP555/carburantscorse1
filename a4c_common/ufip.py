@@ -20,6 +20,10 @@ from openpyxl import load_workbook
 
 UFIP_CUSTOM_URL = "https://valeurs.ufip.fr/datas/custom"
 USER_AGENT = "A4C-observatoires/2.0 (+public-data research)"
+BROWSER_USER_AGENT = (
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/152.0.0.0 Safari/537.36"
+)
 GAZOLE_HEADER_PREFIX = "GAZOLE (Rotterdam)"
 ROTTERDAM_UNIT = "EUR/L"
 ROTTERDAM_REFERENCE_SOURCE = "Thomson-Reuters"
@@ -46,6 +50,40 @@ def validate_ufip_source_contract(raw_html: str) -> None:
         raise RuntimeError("UFIP source contract changed: Thomson-Reuters source label not found")
     if not re.search(r"moyennes?\s+mobiles?\s+sur\s+5\s+jours", folded):
         raise RuntimeError("UFIP source contract changed: 5-day moving-average label not found")
+
+
+def _fetch_validated_contract_page(session, *, timeout: int = 90):
+    """Fetch the documented UFIP form and retry once if a minimal edge-page variant is served.
+
+    GitHub-hosted runners can receive a stripped/minimal first response from the UFIP front
+    door. We still fail closed on semantics: the retry must explicitly contain the Rotterdam
+    EUR/litre, Thomson-Reuters and 5-day moving-average wording before any export is accepted.
+    """
+    first = session.get(UFIP_CUSTOM_URL, timeout=timeout)
+    first.raise_for_status()
+    try:
+        validate_ufip_source_contract(first.text)
+        return first
+    except RuntimeError as first_error:
+        retry = session.get(
+            UFIP_CUSTOM_URL,
+            timeout=timeout,
+            headers={
+                "User-Agent": BROWSER_USER_AGENT,
+                "Accept-Language": "fr-FR,fr;q=0.9,en;q=0.8",
+                "Cache-Control": "no-cache",
+                "Pragma": "no-cache",
+            },
+        )
+        retry.raise_for_status()
+        try:
+            validate_ufip_source_contract(retry.text)
+        except RuntimeError as retry_error:
+            raise RuntimeError(
+                "UFIP source contract unavailable after browser-header retry; "
+                f"first={first_error}; retry={retry_error}"
+            ) from retry_error
+        return retry
 
 
 def _validated_rotterdam_value(raw_value, *, context: str) -> float:
@@ -113,13 +151,11 @@ def fetch_rotterdam_gazole(
     s = session or requests.Session()
     s.headers.setdefault("User-Agent", USER_AGENT)
     try:
-        first = s.get(UFIP_CUSTOM_URL, timeout=timeout)
-        first.raise_for_status()
-        validate_ufip_source_contract(first.text)
+        first = _fetch_validated_contract_page(s, timeout=timeout)
         soup = BeautifulSoup(first.text, "html.parser")
         token = soup.select_one('input[name="ufp_token"]')
         if token is None or not token.get("value"):
-            raise RuntimeError("UFIP ufp_token not found in custom export form")
+            raise RuntimeError("UFIP ufp_token not found in validated custom export form")
         payload = {
             "ufp_token": token["value"],
             "day_from": _format_date(start_date),
