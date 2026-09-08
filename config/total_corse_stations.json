@@ -1,5 +1,5 @@
 {
-  "source_note": "Référentiel d'enseignes issu des travaux A4C sauvegardés le 14 juin 2026 dans le projet je-voudrais-te-faire-travailler-sur. Le fichier officiel prix-carburants ne fournit pas l'enseigne. Les 47 stations ci-dessous sont les stations TotalEnergies actuelles retrouvées dans le référentiel HTML; deux anciens identifiants de Folelli sont conservés comme alias historiques.",
+  "source_note": "Référentiel TotalEnergies Corse issu des travaux A4C sauvegardés le 14 juin 2026, complété par la vérification officielle de Folelli du 8 septembre 2026. Le fichier officiel de prix ne fournit pas l'enseigne dans les lignes de prix. Les identifiants historiques sont conservés comme témoins administratifs/commerciaux et ne sont jamais fusionnés avec les identifiants courants. Les relations de site sont documentaires uniquement et n'autorisent aucun transfert de prix.",
   "stations": {
     "20000006": "RELAIS CECCALDI 24/7",
     "20000007": "SARL FABIANI STATION TOTAL",
@@ -27,7 +27,7 @@
     "20189001": "SARL PAOLETTI PRODUITS PETROLIERS",
     "20189002": "AJACCIO AUTOMOBILES SA",
     "20200006": "ETS FERRARI",
-    "20213007": "TotalEnergies Folelli",
+    "20213008": "STATION TOTAL CGC L'AUTRE",
     "20217004": "ETS ORSINI JM",
     "20218007": "STATION COGNETTI-VITA",
     "20219003": "TOTAL CASARZA",
@@ -49,8 +49,37 @@
     "20600004": "SARL CIAVALDINI STRABONI",
     "20600006": "SAS BRUNINI ET FILS"
   },
-  "historical_aliases": {
-    "20213003": "20213007",
-    "20213006": "20213007"
-  }
+  "historical_total_ids": [
+    "20213003",
+    "20213006",
+    "20213007"
+  ],
+  "site_successions": [
+    {
+      "site": "Folelli - Penta-di-Casinca",
+      "predecessor_id": "20213003",
+      "successor_id": "20213008",
+      "relation": "same_physical_site_successor_probable",
+      "price_transfer": false,
+      "cause_of_id_change": "unknown",
+      "possible_causes_not_established": [
+        "changement de propriétaire",
+        "changement d'exploitant ou de gérant",
+        "changement d'enseigne ou de dossier administratif"
+      ],
+      "evidence": {
+        "same_coordinates": true,
+        "coordinates": {
+          "latitude": "4244600",
+          "longitude": "950800"
+        },
+        "predecessor_address": "Station TOTAL - RN 198 - FOLELLI",
+        "successor_address": "Avenue de Folelli",
+        "predecessor_last_price_date": "2025-12-23",
+        "successor_first_price_date": "2026-09-04",
+        "successor_official_brand": "TotalEnergies"
+      },
+      "note": "Deux identifiants administratifs distincts observés au même emplacement physique. La cause du changement d'identifiant n'est pas documentée. Les séries de prix restent strictement séparées par ID officiel."
+    }
+  ]
 }
