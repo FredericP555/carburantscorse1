@@ -86,7 +86,7 @@ buildAnalyse=function(){
     ? `Après le début de la guerre en Iran, le bouclier avait déjà été détecté comme contraignant ${editorialJoinRanges(priorRanges)}. `
     : '';
   const currentStatus=e.current_active
-    ? `${priorStatus}Il est <strong>actuellement détecté comme contraignant depuis le ${autoDateFr(e.current_active_since)}</strong> : au dernier relevé, <strong>${Math.round((e.latest_near_share||0)*100)} %</strong> des <strong>${e.latest_total_stations}</strong> stations TotalEnergies suivies sont à moins de 1,5 c€/L du plafond de <strong>${autoNumberFr(e.current_cap,2)} €/L</strong>${p75!=null?`, tandis que le 75e percentile des stations corses non‑Total atteint <strong>${autoNumberFr(p75,3)} €/L</strong>`:''}.`
+    ? `${priorStatus}Il est <strong>actuellement détecté comme contraignant depuis le ${autoDateFr(e.current_active_since)}</strong> : au dernier relevé, <strong>${Math.round(((b?.latest_at_cap_share ?? e.latest_near_share ?? 0))*100)} %</strong> des <strong>${e.latest_total_stations}</strong> stations TotalEnergies suivies se situent dans la bande de détection du plafond (<strong>de 0,2 c/L sous à 0,1 c/L au-dessus</strong>) autour de <strong>${autoNumberFr(e.current_cap,2)} €/L</strong>${p75!=null?`, tandis que le 75e percentile des stations corses non‑Total atteint <strong>${autoNumberFr(p75,3)} €/L</strong>`:''}.`
     : `${priorStatus}Au ${through}, le plafond TotalEnergies est en vigueur mais <strong>n'est pas détecté comme économiquement contraignant</strong> par la combinaison « prix Total au plafond + pression du reste du marché corse ».`;
 
   const splitText=outsideGap!=null
