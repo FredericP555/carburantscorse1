@@ -94,7 +94,7 @@ jobs:
         if: steps.clock.outputs.selected == 'true'
         run: pip install -r requirements.txt
 
-      - name: Check whether the previous UFIP week changed materially
+      - name: Check UFIP data and shared-release contract freshness
         if: steps.clock.outputs.selected == 'true'
         id: ufip
         env:
@@ -119,10 +119,16 @@ jobs:
             --pattern rotterdam_gazole_observed.csv \
             --dir outputs/ufip-baseline \
             --clobber
+          gh release download "$tag" \
+            --repo FredericP555/carburantscorse1 \
+            --pattern official_13_20.meta.json \
+            --dir outputs/ufip-baseline \
+            --clobber
 
           python scripts/fetch_ufip.py --output-dir outputs/ufip-live
 
           BASELINE_TAG="$tag" python - <<'PY'
+          import json
           import os
           from datetime import datetime, timedelta
           from pathlib import Path
@@ -133,10 +139,11 @@ jobs:
 
           baseline = pd.read_csv(Path('outputs/ufip-baseline/rotterdam_gazole_observed.csv'))
           live = pd.read_csv(Path('outputs/ufip-live/rotterdam_gazole_observed.csv'))
+          release_meta = json.loads(Path('outputs/ufip-baseline/official_13_20.meta.json').read_text(encoding='utf-8'))
           today = datetime.now(ZoneInfo('Europe/Paris')).date()
           current_monday = today - timedelta(days=today.weekday())
           week_start = current_monday - timedelta(days=7)
-          decision = should_retry_week(baseline, live, week_start)
+          decision = should_retry_week(baseline, live, week_start, release_meta=release_meta)
 
           def max_date(df):
               if df.empty or 'date' not in df.columns:
@@ -147,6 +154,7 @@ jobs:
           with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as fh:
               fh.write(f"ready={'true' if decision['ready'] else 'false'}\n")
               fh.write(f"reason={decision['reason']}\n")
+              fh.write(f"contract_current={'true' if decision['release_contract_current'] else 'false'}\n")
               fh.write(f"week_start={decision['week_start']}\n")
               fh.write(f"week_end={decision['week_end']}\n")
               fh.write(f"baseline_max={max_date(baseline) or ''}\n")
@@ -156,6 +164,7 @@ jobs:
           print(f"Baseline release: {os.environ['BASELINE_TAG']}")
           print(f"Baseline complete: {decision['baseline_complete']}; rows={decision['baseline_rows']}")
           print(f"Live complete: {decision['live_complete']}; rows={decision['live_rows']}")
+          print(f"Release UFIP contract current: {decision['release_contract_current']}")
           print(f"Full C1 rerun required: {decision['ready']} ({decision['reason']})")
           PY
 
@@ -167,7 +176,7 @@ jobs:
           gh workflow run update-weekly.yml \
             --repo FredericP555/carburantscorse1 \
             --ref "${{ github.event.repository.default_branch }}"
-          echo "UFIP previous-week content changed materially; full C1 update dispatched."
+          echo "C1 data or release-contract refresh required; full production update dispatched."
 
       - name: Write retry summary
         if: steps.clock.outputs.selected == 'true' && always()
@@ -177,6 +186,7 @@ jobs:
             echo "- Week checked: ${{ steps.ufip.outputs.week_start }} → ${{ steps.ufip.outputs.week_end }}"
             echo "- Baseline observed through: ${{ steps.ufip.outputs.baseline_max }}"
             echo "- Live UFIP observed through: ${{ steps.ufip.outputs.live_max }}"
+            echo "- Release UFIP contract current: ${{ steps.ufip.outputs.contract_current }}"
             echo "- Decision reason: ${{ steps.ufip.outputs.reason }}"
             echo "- Full C1 rerun dispatched: ${{ steps.ufip.outputs.ready == 'true' }}"
           } >> "$GITHUB_STEP_SUMMARY"
