@@ -246,6 +246,27 @@ function autoViewportChanged(){
 window.addEventListener('resize',autoViewportChanged);
 window.addEventListener('orientationchange',()=>setTimeout(autoViewportChanged,200));
 
+function autoBouclierBandText(b){
+  const rule=b?.rule||{};
+  const below=rule.cap_tolerance_below_cents;
+  const above=rule.cap_tolerance_above_cents;
+  if(below==null||above==null) return 'dans la bande validée du plafond';
+  return `dans la bande du plafond (−${autoNumberFr(below,1)} / +${autoNumberFr(above,1)} c€/L)`;
+}
+
+function autoBouclierMethodText(b){
+  const rule=b?.rule||{};
+  const min=rule.min_total_at_cap_count;
+  const confirm=rule.confirmation_days;
+  const fill=rule.fill_gap_days;
+  const parts=[];
+  if(min!=null) parts.push(`au moins ${min} station Total dans la bande du plafond`);
+  if(rule.market_reference) parts.push(`${rule.market_reference} au niveau ou au-dessus du plafond`);
+  if(confirm!=null) parts.push(`confirmation sur ${confirm} jours consécutifs`);
+  if(fill!=null) parts.push(`comblement maximal de ${fill} jour isolé`);
+  return parts.join(' ; ');
+}
+
 // ── Analyse éditoriale ───────────────────────────────────────────────────────
 // Méthode historique retrouvée : « hors toute action TotalEnergies » = moyenne des jours
 // où AUCUNE intervention Total n'est active, ni sur le Gazole ni sur le SP95. L'indicateur
@@ -276,17 +297,24 @@ buildAnalyse=function(){
   const p75=b?.latest_non_total_p75;
   const outsideGap=e.outside_total_action_gap ?? e.outside_effective_gap;
   const duringGap=e.during_total_action_gap ?? e.during_effective_gap;
-  const currentStatus=e.current_active
-    ? `Le bouclier est <strong>actuellement détecté comme contraignant depuis le ${autoDateFr(e.current_active_since)}</strong> : au dernier relevé, <strong>${Math.round((e.latest_near_share||0)*100)} %</strong> des <strong>${e.latest_total_stations}</strong> stations TotalEnergies suivies sont à moins de 1,5 c€/L du plafond de <strong>${autoNumberFr(e.current_cap,2)} €/L</strong>${p75!=null?`, tandis que le 75e percentile des stations corses non‑Total atteint <strong>${autoNumberFr(p75,3)} €/L</strong>`:''}.`
+  const atCapCount=b?.latest_at_cap_count ?? e.latest_at_cap_count;
+  const atCapShare=b?.latest_at_cap_share ?? e.latest_near_share;
+  const totalStations=b?.latest_total_stations ?? e.latest_total_stations;
+  const cap=b?.current_cap ?? e.current_cap;
+  const active=b?.current_active ?? e.current_active;
+  const activeSince=b?.current_active_since ?? e.current_active_since;
+  const currentStatus=active
+    ? `Le bouclier est <strong>actuellement détecté comme contraignant depuis le ${autoDateFr(activeSince)}</strong> : au dernier relevé, <strong>${atCapCount??'—'}</strong> station(s) TotalEnergies sur <strong>${totalStations??'—'}</strong> (${atCapShare==null?'—':Math.round(atCapShare*100)+' %'}) sont ${autoBouclierBandText(b)} autour du plafond de <strong>${autoNumberFr(cap,2)} €/L</strong>${p75!=null?`, tandis que le 75e percentile des stations corses non‑Total atteint <strong>${autoNumberFr(p75,3)} €/L</strong>`:''}.`
     : `Au ${through}, le plafond TotalEnergies est en vigueur mais <strong>n'est pas détecté comme économiquement contraignant</strong> par la combinaison « prix Total au plafond + pression du reste du marché corse ».`;
 
   const splitText=outsideGap!=null
     ? `Hors toute période d'action TotalEnergies — c'est-à-dire les jours où aucune action n'est active ni sur le gazole ni sur le SP95 — l'écart moyen atteint <strong>${autoNumberFr(outsideGap,1,true)} c€/L</strong>${duringGap!=null?`; pendant les périodes d'action TotalEnergies, il est de <strong>${autoNumberFr(duringGap,1,true)} c€/L</strong>`:''}.`
     : '';
 
+  const method=autoBouclierMethodText(b);
   const courant=col('2 — EFFETS DES ACTIONS TOTALENERGIES',
     `Les remises carburant (sept.–déc. 2022, −20 c/L puis −10 c/L) ont nettement réduit l'écart : en 2022, l'écart annuel moyen ${c} est tombé à <strong>+${d.effet.avec2022} c€/L</strong> au lieu de +${d.effet.sans2022} c€/L hors toute action TotalEnergies. En ${e.year}, jusqu'au ${through}, l'écart moyen observé s'établit à <strong>${autoNumberFr(e.observed_ytd_gap,1,true)} c€/L</strong>. ${splitText} ${currentStatus}`,
-    '« Hors toute action TotalEnergies » : moyenne des écarts journaliers HT des jours où aucune intervention Total n’est active sur aucun des deux carburants. Le bouclier prospectif reste détecté selon la règle économique documentée ; les anciennes zones sont figées.');
+    `« Hors toute action TotalEnergies » est le calendrier éditorial historique ; les zones de bouclier effectif suivent une règle distincte et validée${method?` : ${method}`:''}. Les plages effectives 2023–2025 ont été recalculées une fois avec cette règle puis gelées ; 2026+ est recalculé dynamiquement.`);
 
   el.innerHTML=historique+courant;
 };
