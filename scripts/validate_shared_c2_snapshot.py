@@ -16,6 +16,7 @@ import math
 from pathlib import Path
 
 from rotterdam_corse_shared_v2 import ENTRY_DATE_2026, EXIT_DATES_2026, R1_SOURCE_DATES_2026
+import shared_snapshot_semantics
 
 META = Path("outputs/shared/official_13_20.meta.json")
 SNAPSHOT = Path("outputs/shared/official_13_20.csv.gz")
@@ -133,9 +134,10 @@ def main() -> None:
         raise RuntimeError("Shared snapshot misses department 13 or 20")
     if not {"Gazole", "SP95", "E10"}.issubset(set(meta.get("fuels", []))):
         raise RuntimeError("Shared snapshot misses a required fuel")
-    with gzip.open(SNAPSHOT, "rt", encoding="utf-8") as fh:
-        if not fh.readline().strip():
-            raise RuntimeError("Shared snapshot gzip has no CSV header")
+
+    # C1-08: a checksum proves transport integrity, not that the manifest truthfully
+    # describes the decoded asset. Recompute row counts, date bounds and populations.
+    shared_snapshot_semantics.validate_snapshot_semantics(meta, SNAPSHOT)
 
     validate_events(meta)
 
@@ -174,7 +176,8 @@ def main() -> None:
     if not isinstance(bouclier, dict):
         raise RuntimeError("Missing effective-shield metadata")
     validate_phases(bouclier)
-    print("Shared C1 -> C2 release contract with official events and UFIP semantics: OK")
+    shared_snapshot_semantics.validate_bouclier_semantics(bouclier, str(meta.get("max_date") or ""))
+    print("Shared C1 -> C2 release contract with decoded manifest, official events and UFIP semantics: OK")
 
 
 if __name__ == "__main__":

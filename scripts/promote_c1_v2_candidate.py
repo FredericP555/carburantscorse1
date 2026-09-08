@@ -17,6 +17,7 @@ import json
 from pathlib import Path
 
 import c1_bouclier_meta
+import c1_candidate_semantics
 import c1_last_date
 import c1_v2_contracts
 import update_data_v2 as core
@@ -57,13 +58,14 @@ def main() -> None:
     summary = json.loads(summary_path.read_text(encoding="utf-8"))
     baseline = json.loads(target_path.read_text(encoding="utf-8"))
 
-    # Canonicalize only metadata that is derived from the candidate itself.  This is done
+    # Canonicalize only metadata that is derived from the candidate itself. This is done
     # before validation so downstream bundle generation sees exactly the guarded metadata.
     try:
         candidate, summary = c1_v2_contracts.refresh_publication_metadata(
             candidate, baseline, summary
         )
         c1_v2_contracts.validate_all(baseline, candidate)
+        c1_candidate_semantics.validate_summary_cutoff(candidate, summary)
     except ValueError as exc:
         raise SystemExit(f"Refusing C1 V2 candidate: {exc}") from exc
     candidate_path.write_text(
@@ -147,6 +149,14 @@ def main() -> None:
                 if old_prefix != new_prefix:
                     raise SystemExit(f"Refusing C1 V2 candidate: protected history changed in {fuel}/{region}/{gran}")
                 protected += len(old_prefix)
+
+    if not initial:
+        try:
+            c1_candidate_semantics.validate_mutable_aggregates(
+                baseline, candidate, first_new_day
+            )
+        except ValueError as exc:
+            raise SystemExit(f"Refusing C1 V2 candidate: {exc}") from exc
 
     if initial and int(summary.get("rewritten_daily_rows_total", 0)) <= 0:
         raise SystemExit("Refusing C1 V2 candidate: initial transition rewrote no daily rows")

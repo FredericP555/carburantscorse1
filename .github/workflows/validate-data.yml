@@ -8,10 +8,13 @@ on:
 permissions:
   contents: read
 
+env:
+  PYTHONPATH: .:scripts
+
 jobs:
   validate:
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 55
     steps:
       - name: Checkout automation branch
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -27,7 +30,10 @@ jobs:
         run: python -m pip install --disable-pip-version-check -r requirements.lock.txt
 
       - name: Run regression unit tests
-        run: PYTHONPATH=scripts:. python -m unittest discover -s tests -v
+        run: python -m unittest discover -s tests -v
+
+      - name: Compile V2 production sources
+        run: python -m compileall -q a4c_common scripts
 
       - name: Verify station brand HTML parser
         run: python scripts/test_station_brands.py
@@ -44,53 +50,70 @@ jobs:
       - name: Verify recovered historical editorial method
         run: python scripts/validate_editorial_history.py
 
-      - name: Build append-only candidate
-        run: python scripts/update_data_append.py --input data.json --output data-candidate.json
-
-      - name: Fetch the C1-owned Rotterdam source required by the shared manifest
-        run: python scripts/fetch_ufip.py --output-dir outputs/ufip
-
-      - name: Build shared 13/20 official snapshot
-        run: python scripts/export_shared_c2_snapshot.py
-
-      - name: Verify shared snapshot manifest
+      - name: Prefetch official annual ZIPs once with production retries
+        shell: bash
         run: |
+          set -euo pipefail
+          mkdir -p .cache/official-fuel
+          current_year=$(python -c "from datetime import date; print(date.today().year)")
+          previous_year=$((current_year-1))
+          for year in "$previous_year" "$current_year"; do
+            if [ "$year" = "$current_year" ]; then
+              url="https://donnees.roulez-eco.fr/opendata/annee"
+            else
+              url="https://donnees.roulez-eco.fr/opendata/annee/$year"
+            fi
+            out=".cache/official-fuel/PrixCarburants_annuel_${year}.zip"
+            tmp="${out}.tmp"
+            curl --fail --location \
+              --retry 5 --retry-delay 5 --retry-all-errors \
+              --connect-timeout 30 --max-time 600 \
+              --user-agent "A4C-observatoire/2.0" \
+              "$url" -o "$tmp"
+            mv "$tmp" "$out"
+          done
           python - <<'PY'
-          import gzip, hashlib, json
+          import io, zipfile
+          from datetime import date
           from pathlib import Path
-          data=Path('outputs/shared/official_13_20.csv.gz')
-          meta=json.loads(Path('outputs/shared/official_13_20.meta.json').read_text(encoding='utf-8'))
-          assert meta['schema']=='a4c-official-13-20-v1'
-          assert meta['rows']>0
-          assert meta['sha256']==hashlib.sha256(data.read_bytes()).hexdigest()
-          with gzip.open(data,'rt',encoding='utf-8') as f:
-              header=f.readline().strip()
-          assert 'station_id' in header and 'price_in_reference_band' in header
-          assert meta.get('bouclier') and set(meta['bouclier'])=={'Gazole','SP95'}
-          print('Shared snapshot manifest: OK', meta['rows'], meta['max_date'], data.stat().st_size)
+          current=date.today().year
+          for year in (current-1,current):
+              p=Path(f'.cache/official-fuel/PrixCarburants_annuel_{year}.zip')
+              raw=p.read_bytes()
+              with zipfile.ZipFile(io.BytesIO(raw)) as zf:
+                  if not any(n.lower().endswith('.xml') for n in zf.namelist()):
+                      raise SystemExit(f'Official ZIP {year} contains no XML')
+              print(f'Validated official ZIP {year}: {len(raw):,} bytes')
           PY
 
-      - name: Audit Corsica station eligibility
-        run: python scripts/station_audit.py --candidate data-candidate.json --previous data.json --write-meta
+      - name: Fetch the single C1-owned UFIP Rotterdam source
+        run: python scripts/fetch_ufip.py --output-dir outputs/ufip
 
-      - name: Validate candidate
-        run: python scripts/validate_candidate.py
+      - name: Resolve new, unresolved or due Corsica station IDs in workspace
+        run: >-
+          python scripts/resolve_corse_station_brands_incremental.py
+          --output config/corse_station_brands.json
+          --corrections config/corse_station_brand_corrections.csv
 
-      - name: Add dynamic bouclier and editorial metadata
-        run: python scripts/enrich_data_meta.py --input data-candidate.json
+      - name: Build production C1 V2 candidate
+        run: python scripts/build_c1_v2_candidate.py
 
-      - name: Validate metadata
-        run: python scripts/validate_meta.py
+      - name: Exercise production C1 V2 promotion guard
+        run: python scripts/promote_c1_v2_candidate.py
 
-      - name: Render weekly summary
-        run: python scripts/weekly_summary.py --input data-candidate.json > weekly-summary.md
+      - name: Build complete production C1 to C2 V2 bundle
+        run: python scripts/export_shared_c2_snapshot.py
 
-      - name: Upload candidate and audit summary
+      - name: Validate complete production C1 to C2 V2 contract
+        run: python scripts/validate_shared_c2_snapshot.py
+
+      - name: Upload production-shaped candidate and audit evidence
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: candidate-data-json
+          name: c1-v2-pr-validation
           path: |
-            data-candidate.json
-            weekly-summary.md
+            outputs/c1-v2-candidate.json
+            outputs/c1-v2-summary.json
             outputs/shared/official_13_20.meta.json
+            config/corse_station_brands.json
           retention-days: 7
