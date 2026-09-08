@@ -34,6 +34,20 @@ class FolelliSiteSuccessionContractTests(unittest.TestCase):
         self.assertEqual(folelli["evidence"]["predecessor_last_price_date"], "2025-12-23")
         self.assertEqual(folelli["evidence"]["successor_first_price_date"], "2026-09-04")
 
+    def test_bouclier_detector_keeps_old_ids_as_total_without_alias_target(self):
+        import bouclier_detector
+
+        self.assertIn("20213008", bouclier_detector.CURRENT_TOTAL_IDS)
+        self.assertNotIn("20213007", bouclier_detector.CURRENT_TOTAL_IDS)
+        self.assertTrue(
+            {"20213003", "20213006", "20213007"}
+            <= bouclier_detector.HISTORICAL_TOTAL_IDS
+        )
+        self.assertTrue(
+            {"20213003", "20213006", "20213007", "20213008"}
+            <= bouclier_detector.TOTAL_IDS
+        )
+
     def test_site_succession_metadata_cannot_merge_station_price_series(self):
         # The documentary succession metadata must never be read by either price
         # builder. Price state remains keyed strictly by the official station id.
@@ -44,6 +58,10 @@ class FolelliSiteSuccessionContractTests(unittest.TestCase):
             source = (ROOT / relative).read_text(encoding="utf-8")
             self.assertNotIn("site_successions", source)
             self.assertNotIn("successor_id", source)
+
+        calibrator = (ROOT / "scripts/calibrate_bouclier.py").read_text(encoding="utf-8")
+        self.assertIn("historical_total_ids", calibrator)
+        self.assertNotIn("historical_aliases", calibrator)
 
 
 if __name__ == "__main__":
