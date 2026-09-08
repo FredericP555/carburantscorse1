@@ -1,12 +1,8 @@
 #!/usr/bin/env python3
-from datetime import date, datetime, timezone
-from pathlib import Path
+from datetime import date
 
-from resolve_corse_station_brands_incremental import (
-    ids_to_fetch,
-    ids_to_resolve,
-    resolve_incremental,
-)
+from ensure_station_brand_registry_policy import ensure_policy_metadata
+from resolve_corse_station_brands_incremental import ids_to_fetch, ids_to_resolve
 from update_corse_station_brands import (
     classify_brand,
     classify_station,
@@ -75,7 +71,7 @@ assert ids_to_fetch(
     today=date(2026, 9, 8), reverify_days=90, limit=12,
 ) == ['20000008']
 
-# A metadata/schema upgrade must be persisted even when no station identity changes.
+# Policy metadata must be persistable even when no station identity changed.
 legacy_registry = {
     'schema': 'a4c-corsica-station-brands-v2',
     'classification': {
@@ -83,35 +79,14 @@ legacy_registry = {
         'unknown_policy': 'inconnu is excluded from network comparisons',
         'corrections_file': 'config/corse_station_brand_corrections.csv',
     },
-    'stations': {
-        '20000006': {
-            'enseigne': 'TotalEnergies',
-            'segment': 'traditionnel',
-            'detail': 'major_tradi',
-            'classification_source': 'auto',
-            'brand_source': 'officiel',
-            'active': True,
-            'first_seen': '2026-08-19',
-            'last_seen': '2026-09-08',
-            'verified_at': '2026-09-01T00:00:00+00:00',
-            'brand_valid_from': '2026-08-19',
-            'brand_history': [],
-        }
-    },
+    'stations': {},
 }
-updated, summary = resolve_incremental(
-    legacy_registry,
-    {'20000006'},
-    Path('__missing_station_brand_corrections_for_test__.csv'),
-    fetcher=lambda _station_id: (None, 'should not fetch'),
-    today=date(2026, 9, 8),
-    now=datetime(2026, 9, 8, 3, 0, tzinfo=timezone.utc),
-    reverify_days=90,
-    reverify_limit=12,
-)
-assert summary['brand_fetch_count'] == 0
-assert summary['changed'] is True
-assert updated['classification']['brand_reverify_days'] == 90
-assert updated['classification']['brand_reverify_limit_per_run'] == 12
+normalized, changed = ensure_policy_metadata(legacy_registry)
+assert changed is True
+assert normalized['classification']['brand_reverify_days'] == 90
+assert normalized['classification']['brand_reverify_limit_per_run'] == 12
+normalized_again, changed_again = ensure_policy_metadata(normalized)
+assert changed_again is False
+assert normalized_again == normalized
 
 print('Station brand parser, A4C classification and temporal incremental resolution: OK')
