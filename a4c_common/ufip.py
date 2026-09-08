@@ -1,8 +1,16 @@
 #!/usr/bin/env python3
-"""Client for the public UFIP / Énergies et Mobilités custom-value export."""
+"""Client for the public UFIP / Énergies et Mobilités custom-value export.
+
+The A4C Rotterdam reference is explicitly the UFIP page's Rotterdam quotation in EUR/litre,
+source Thomson-Reuters, published as a 5-day moving average. The downloader validates that
+public source contract before accepting an export so a future unit/method change cannot be
+silently consumed under the same column name.
+"""
 from __future__ import annotations
 
 import io
+import math
+import re
 from datetime import date
 
 import pandas as pd
@@ -13,10 +21,41 @@ from openpyxl import load_workbook
 UFIP_CUSTOM_URL = "https://valeurs.ufip.fr/datas/custom"
 USER_AGENT = "A4C-observatoires/2.0 (+public-data research)"
 GAZOLE_HEADER_PREFIX = "GAZOLE (Rotterdam)"
+ROTTERDAM_UNIT = "EUR/L"
+ROTTERDAM_REFERENCE_SOURCE = "Thomson-Reuters"
+ROTTERDAM_SMOOTHING = "5-day moving average"
+ROTTERDAM_MIN_EUR_L = 0.05
+ROTTERDAM_MAX_EUR_L = 5.0
 
 
 def _format_date(value: date) -> str:
     return value.strftime("%d/%m/%Y")
+
+
+def validate_ufip_source_contract(raw_html: str) -> None:
+    """Require the public UFIP page to still describe the expected Rotterdam series."""
+    text = BeautifulSoup(raw_html, "html.parser").get_text(" ", strip=True)
+    text = " ".join(text.replace("\xa0", " ").split())
+    folded = text.casefold().replace("–", "-").replace("—", "-")
+    if "cotations rotterdam" not in folded:
+        raise RuntimeError("UFIP source contract changed: Rotterdam quotation section not found")
+    unit_ok = any(token in folded for token in ("€ /litre", "€/litre", "€ / litre", "eur/litre", "eur / litre"))
+    if not unit_ok:
+        raise RuntimeError("UFIP source contract changed: Rotterdam unit is no longer EUR/litre")
+    if "thomson-reuters" not in folded and "thomson reuters" not in folded:
+        raise RuntimeError("UFIP source contract changed: Thomson-Reuters source label not found")
+    if not re.search(r"moyennes?\s+mobiles?\s+sur\s+5\s+jours", folded):
+        raise RuntimeError("UFIP source contract changed: 5-day moving-average label not found")
+
+
+def _validated_rotterdam_value(raw_value, *, context: str) -> float:
+    try:
+        value = float(raw_value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"Invalid Rotterdam EUR/L value in {context}: {raw_value!r}") from exc
+    if not math.isfinite(value) or not ROTTERDAM_MIN_EUR_L <= value <= ROTTERDAM_MAX_EUR_L:
+        raise ValueError(f"Implausible Rotterdam EUR/L value in {context}: {raw_value!r}")
+    return value
 
 
 def parse_rotterdam_gazole_xlsx(raw: bytes) -> pd.DataFrame:
@@ -40,7 +79,7 @@ def parse_rotterdam_gazole_xlsx(raw: bytes) -> pd.DataFrame:
         raise ValueError(f"UFIP workbook has no Rotterdam Gazole column: {header}")
 
     parsed = []
-    for row in rows[1:]:
+    for row_number, row in enumerate(rows[1:], start=2):
         if date_col >= len(row) or fuel_col >= len(row):
             continue
         raw_date, raw_value = row[date_col], row[fuel_col]
@@ -52,7 +91,8 @@ def parse_rotterdam_gazole_xlsx(raw: bytes) -> pd.DataFrame:
             d = raw_date
         else:
             d = pd.to_datetime(raw_date, dayfirst=True).date()
-        parsed.append((d, float(raw_value)))
+        value = _validated_rotterdam_value(raw_value, context=f"XLSX row {row_number} ({d})")
+        parsed.append((d, value))
     df = pd.DataFrame(parsed, columns=["date", "rotterdam_eur_l"])
     if not df.empty:
         df = df.sort_values("date").drop_duplicates("date", keep="last").reset_index(drop=True)
@@ -66,7 +106,7 @@ def fetch_rotterdam_gazole(
     session: requests.Session | None = None,
     timeout: int = 90,
 ) -> pd.DataFrame:
-    """Download the UFIP Rotterdam Gazole series for a custom period."""
+    """Download the validated UFIP Rotterdam Gazole series for a custom period."""
     if end_date < start_date:
         raise ValueError("end_date must be >= start_date")
     own_session = session is None
@@ -75,6 +115,7 @@ def fetch_rotterdam_gazole(
     try:
         first = s.get(UFIP_CUSTOM_URL, timeout=timeout)
         first.raise_for_status()
+        validate_ufip_source_contract(first.text)
         soup = BeautifulSoup(first.text, "html.parser")
         token = soup.select_one('input[name="ufp_token"]')
         if token is None or not token.get("value"):
@@ -87,7 +128,12 @@ def fetch_rotterdam_gazole(
         }
         response = s.post(UFIP_CUSTOM_URL, data=payload, timeout=timeout, allow_redirects=True)
         response.raise_for_status()
-        return parse_rotterdam_gazole_xlsx(response.content)
+        frame = parse_rotterdam_gazole_xlsx(response.content)
+        if not frame.empty:
+            outside = frame[(frame["date"] < start_date) | (frame["date"] > end_date)]
+            if not outside.empty:
+                raise RuntimeError("UFIP export returned Rotterdam dates outside the requested interval")
+        return frame
     finally:
         if own_session:
             s.close()
