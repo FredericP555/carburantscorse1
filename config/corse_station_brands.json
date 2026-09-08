@@ -13,7 +13,9 @@
       "inconnu"
     ],
     "unknown_policy": "inconnu is excluded from network comparisons",
-    "corrections_file": "config/corse_station_brand_corrections.csv"
+    "corrections_file": "config/corse_station_brand_corrections.csv",
+    "brand_reverify_days": 90,
+    "brand_reverify_limit_per_run": 12
   },
   "current_station_count": 112,
   "verified_brand_count": 112,
