@@ -121,10 +121,11 @@ def is_reliable_price(value: float | None) -> bool:
 def parse_year(year: int):
     """Map (station, region, fuel) -> chronological updates.
 
-    An aberrant numeric declaration is retained as an update whose value is ``None``. This is
-    important: the bad declaration must stop the previous price from being carried forward,
-    rather than being ignored as though it never occurred. A later valid declaration resumes
-    the station's contribution to averages.
+    Any price declaration with a valid timestamp but an invalid numeric value is retained as an
+    update whose value is ``None``. This includes both out-of-band numeric prices and malformed
+    or missing numeric values. The declaration must stop the previous price from being carried
+    forward, rather than being ignored as though it never occurred. A later valid declaration
+    resumes the station's contribution to averages.
     """
     raw = download(year)
     zf = zipfile.ZipFile(io.BytesIO(raw))
@@ -154,9 +155,14 @@ def parse_year(year: int):
                 price_rows += 1
                 try:
                     ts = datetime.fromisoformat(p.attrib["maj"])
-                    raw_value = float(p.attrib["valeur"])
                 except (KeyError, ValueError):
+                    # Without a valid timestamp the declaration cannot be placed in the state
+                    # timeline, so it cannot safely invalidate a previous dated value.
                     continue
+                try:
+                    raw_value = float(p.attrib["valeur"])
+                except (KeyError, TypeError, ValueError):
+                    raw_value = None
                 value = raw_value if is_reliable_price(raw_value) else None
                 if value is None:
                     aberrant_rows += 1
