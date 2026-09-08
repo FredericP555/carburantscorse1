@@ -16,8 +16,10 @@ from pathlib import Path
 
 import update_data_v2 as core
 
-REGISTRY = json.loads(Path('config/total_corse_stations.json').read_text(encoding='utf-8'))['stations']
-TOTAL_IDS = set(REGISTRY)
+REGISTRY = json.loads(Path('config/total_corse_stations.json').read_text(encoding='utf-8'))
+CURRENT_TOTAL_IDS = set(REGISTRY['stations'])
+HISTORICAL_TOTAL_IDS = set(REGISTRY.get('historical_total_ids', []))
+TOTAL_IDS = CURRENT_TOTAL_IDS | HISTORICAL_TOTAL_IDS
 MAX_AGE = core.MAX_FFILL_DAYS
 
 MANUAL = {

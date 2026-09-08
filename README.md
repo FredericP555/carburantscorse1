@@ -12,7 +12,7 @@ app.js                              Application historique (Chart.js)
 automation.js                       Dates, fenêtre mobile, bouclier et analyse courante
 chart.min.js                        Bibliothèque Chart.js 4.4.1
 data.json                           Séries pré-calculées + métadonnées dynamiques
-config/total_corse_stations.json    Référentiel TotalEnergies Corse + alias historiques
+config/total_corse_stations.json    Référentiel TotalEnergies Corse + historique des IDs/sites
 scripts/                            Génération, détection et contrôles
 .github/workflows/update-weekly.yml Mise à jour hebdomadaire
 ```
@@ -67,7 +67,9 @@ Le stock prix-carburants.gouv.fr ne porte pas directement l'enseigne dans les d�
 
 Les IDs nouveaux, non résolus ou qui réapparaissent sont vérifiés immédiatement. Les IDs actifs déjà résolus sont ensuite **revérifiés progressivement**, par ancienneté de vérification, avec une politique bornée à **90 jours** et **12 revérifications par passage**. Un changement d'enseigne détecté ne réécrit pas l'histoire : l'ancienne identité est conservée avec sa période de validité et la nouvelle ne devient applicable qu'à la date de sa vérification.
 
-Le fichier `config/total_corse_stations.json` conserve par ailleurs le référentiel TotalEnergies et ses alias historiques utilisés par le détecteur. Les alias sont une configuration historique explicite ; leur présence ne constitue pas à elle seule une nouvelle démonstration d'identité physique entre anciens et nouveaux IDs.
+Le fichier `config/total_corse_stations.json` distingue désormais les **IDs TotalEnergies courants** des **IDs historiques**. Un ancien ID n'est jamais supprimé simplement parce qu'un nouvel ID apparaît au même endroit : sa disparition des déclarations peut elle-même témoigner d'une évolution administrative ou commerciale. Les relations `site_successions` documentent seulement une succession probable sur un même site physique ; elles ne fusionnent jamais les séries de prix et n'attribuent aucune cause précise au changement d'ID sans preuve.
+
+À Folelli, `20213003` est ainsi conservé comme ID Total historique après sa dernière déclaration du **23 décembre 2025**, tandis que `20213008` est l'ID TotalEnergies courant observé au même couple de coordonnées et déclarant à partir du **4 septembre 2026**. La cause du changement d'identifiant (propriétaire, exploitant/gérant, enseigne ou autre dossier administratif) n'est pas connue. Les prix des deux IDs restent strictement séparés.
 
 ## Bouclier TotalEnergies effectif
 
