@@ -1,0 +1,1 @@
+P2 step 9 scope: keep published history frozen; temporalize brand changes prospectively; make public bouclier text follow validated metadata; validate UFIP source semantics; retry when a complete prior week is corrected at unchanged dates.

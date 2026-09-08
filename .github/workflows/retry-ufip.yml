@@ -20,6 +20,8 @@ on:
       - main
     paths:
       - .github/workflows/retry-ufip.yml
+      - scripts/ufip_retry_policy.py
+      - a4c_common/ufip.py
   workflow_dispatch:
 
 permissions:
@@ -92,7 +94,7 @@ jobs:
         if: steps.clock.outputs.selected == 'true'
         run: pip install -r requirements.txt
 
-      - name: Check whether the previous week is now UFIP-complete
+      - name: Check whether the previous UFIP week changed materially
         if: steps.clock.outputs.selected == 'true'
         id: ufip
         env:
@@ -127,54 +129,34 @@ jobs:
           from zoneinfo import ZoneInfo
 
           import pandas as pd
+          from scripts.ufip_retry_policy import should_retry_week
 
           baseline = pd.read_csv(Path('outputs/ufip-baseline/rotterdam_gazole_observed.csv'))
           live = pd.read_csv(Path('outputs/ufip-live/rotterdam_gazole_observed.csv'))
-
           today = datetime.now(ZoneInfo('Europe/Paris')).date()
           current_monday = today - timedelta(days=today.weekday())
           week_start = current_monday - timedelta(days=7)
-          week_end = week_start + timedelta(days=6)
-
-          def dates(df):
-              if df.empty or 'date' not in df.columns or 'rotterdam_eur_l' not in df.columns:
-                  return pd.Series(dtype='datetime64[ns]')
-              d = pd.to_datetime(df['date'], errors='coerce').dt.normalize()
-              mask = df['rotterdam_eur_l'].notna() & d.between(pd.Timestamp(week_start), pd.Timestamp(week_end))
-              return d[mask].dropna().drop_duplicates().sort_values()
-
-          def complete(df):
-              d = dates(df)
-              if len(d) < 3:
-                  return False
-              return (
-                  d.iloc[0] <= pd.Timestamp(week_start) + pd.Timedelta(days=1)
-                  and d.iloc[-1] >= pd.Timestamp(week_start) + pd.Timedelta(days=3)
-              )
+          decision = should_retry_week(baseline, live, week_start)
 
           def max_date(df):
               if df.empty or 'date' not in df.columns:
                   return None
-              d = pd.to_datetime(df['date'], errors='coerce').dropna()
-              return d.max().date().isoformat() if not d.empty else None
+              values = pd.to_datetime(df['date'], errors='coerce').dropna()
+              return values.max().date().isoformat() if not values.empty else None
 
-          baseline_complete = complete(baseline)
-          live_complete = complete(live)
-          ready = (not baseline_complete) and live_complete
-
-          out = os.environ['GITHUB_OUTPUT']
-          with open(out, 'a', encoding='utf-8') as fh:
-              fh.write(f"ready={'true' if ready else 'false'}\n")
-              fh.write(f"week_start={week_start.isoformat()}\n")
-              fh.write(f"week_end={week_end.isoformat()}\n")
+          with open(os.environ['GITHUB_OUTPUT'], 'a', encoding='utf-8') as fh:
+              fh.write(f"ready={'true' if decision['ready'] else 'false'}\n")
+              fh.write(f"reason={decision['reason']}\n")
+              fh.write(f"week_start={decision['week_start']}\n")
+              fh.write(f"week_end={decision['week_end']}\n")
               fh.write(f"baseline_max={max_date(baseline) or ''}\n")
               fh.write(f"live_max={max_date(live) or ''}\n")
 
-          print(f"Previous week: {week_start} -> {week_end}")
+          print(f"Previous week: {decision['week_start']} -> {decision['week_end']}")
           print(f"Baseline release: {os.environ['BASELINE_TAG']}")
-          print(f"Baseline UFIP max: {max_date(baseline)}; complete: {baseline_complete}")
-          print(f"Live UFIP max: {max_date(live)}; complete: {live_complete}")
-          print(f"Full C1 rerun required: {ready}")
+          print(f"Baseline complete: {decision['baseline_complete']}; rows={decision['baseline_rows']}")
+          print(f"Live complete: {decision['live_complete']}; rows={decision['live_rows']}")
+          print(f"Full C1 rerun required: {decision['ready']} ({decision['reason']})")
           PY
 
       - name: Dispatch full C1 production update
@@ -185,7 +167,7 @@ jobs:
           gh workflow run update-weekly.yml \
             --repo FredericP555/carburantscorse1 \
             --ref "${{ github.event.repository.default_branch }}"
-          echo "Fresh UFIP now completes the missing week; full C1 update dispatched."
+          echo "UFIP previous-week content changed materially; full C1 update dispatched."
 
       - name: Write retry summary
         if: steps.clock.outputs.selected == 'true' && always()
@@ -195,5 +177,6 @@ jobs:
             echo "- Week checked: ${{ steps.ufip.outputs.week_start }} → ${{ steps.ufip.outputs.week_end }}"
             echo "- Baseline observed through: ${{ steps.ufip.outputs.baseline_max }}"
             echo "- Live UFIP observed through: ${{ steps.ufip.outputs.live_max }}"
+            echo "- Decision reason: ${{ steps.ufip.outputs.reason }}"
             echo "- Full C1 rerun dispatched: ${{ steps.ufip.outputs.ready == 'true' }}"
           } >> "$GITHUB_STEP_SUMMARY"

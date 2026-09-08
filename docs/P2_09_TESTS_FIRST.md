@@ -1,0 +1,1 @@
+P2 step 9 tests were added before implementation. They cover targeted temporal Corsica brand reverification, the UFIP source contract, same-date quotation corrections in the retry policy, and public bouclier labels derived from validated metadata.

@@ -61,26 +61,30 @@ La publication est bloquée si :
 
 Tant qu'aucun audit précédent n'est encore stocké dans `data.json`, la population vérifiée du 17 août 2026 (**121 Gazole / 106 SP95**) sert de référence de démarrage pour le garde-fou de baisse de 20 %.
 
-## Référentiel TotalEnergies
+## Référentiel des enseignes corses
 
-Le fichier Open Data ne fournit pas l'enseigne. Le référentiel récupéré dans le projet méthodologique A4C contient **47 stations TotalEnergies actuelles** en Corse. Deux anciens identifiants de Folelli (`20213003` et `20213006`) sont conservés comme alias historiques de `20213007`.
+Le stock prix-carburants.gouv.fr ne porte pas directement l'enseigne dans les déclarations de prix utilisées par le générateur. Le registre `config/corse_station_brands.json` est donc enrichi depuis la fiche officielle de chaque station.
+
+Les IDs nouveaux, non résolus ou qui réapparaissent sont vérifiés immédiatement. Les IDs actifs déjà résolus sont ensuite **revérifiés progressivement**, par ancienneté de vérification, avec une politique bornée à **90 jours** et **12 revérifications par passage**. Un changement d'enseigne détecté ne réécrit pas l'histoire : l'ancienne identité est conservée avec sa période de validité et la nouvelle ne devient applicable qu'à la date de sa vérification.
+
+Le fichier `config/total_corse_stations.json` conserve par ailleurs le référentiel TotalEnergies et ses alias historiques utilisés par le détecteur. Les alias sont une configuration historique explicite ; leur présence ne constitue pas à elle seule une nouvelle démonstration d'identité physique entre anciens et nouveaux IDs.
 
 ## Bouclier TotalEnergies effectif
 
-Le graphique distingue le plafond commercial annoncé de son **effet économique observable**.
+Le graphique distingue le plafond commercial annoncé de son **effet économique observable**. Une seule règle de détection est désormais autoritative dans `scripts/bouclier_detector.py` et ses paramètres sont publiés dans `data.json > meta > bouclier > <carburant> > rule`.
 
-Les anciennes zones jaunes déjà publiées restent figées. Les fichiers de travail retrouvés montrent qu'elles ne peuvent pas être reproduites fidèlement par un seul seuil mécanique ; elles ne sont donc pas réécrites a posteriori.
+Un jour brut est actif lorsque :
 
-À partir du **29 mai 2026**, une nouvelle zone n'est ajoutée que si deux signaux indépendants sont réunis :
+- au moins **une station TotalEnergies active** est dans la bande du plafond, soit de **0,2 c€/L sous le plafond à 0,1 c€/L au-dessus** ;
+- le **75e percentile des stations corses non-Total** est au niveau ou au-dessus du plafond.
 
-- au moins **20 %** des stations TotalEnergies actives sont à moins de **1,5 c€/L** du plafond ;
-- le **75e percentile des stations corses non-Total** est au niveau ou au-dessus du plafond, ce qui indique que le reste du marché exerce effectivement une pression compatible avec un plafond contraignant.
+Une période est confirmée après **2 jours bruts actifs consécutifs**, avec effet rétroactif au premier de ces deux jours. Après confirmation, **un seul jour inactif isolé** peut être comblé entre deux portions confirmées. Deux journées actives isolées séparées par un jour ne suffisent donc pas à créer artificiellement une période.
 
-Pour éviter le clignotement quotidien, les interruptions de 4 jours ou moins peuvent être comblées et les épisodes isolés de moins de 5 jours sont écartés.
+Les plages **effectives** 2023–2025 ont été recalculées une fois avec cette règle unique et sont gelées pour la reproductibilité ; à partir de 2026, la même règle est recalculée dynamiquement sur le stock officiel. Cela est distinct du calendrier historique d'**actions TotalEnergies** utilisé uniquement pour reproduire l'indicateur éditorial « hors toute action TotalEnergies ».
 
-Cette règle prospective évite de confondre deux situations : « beaucoup de Total affichent encore 1,99 € » et « 1,99 € limite réellement leurs prix alors que le marché autour pousserait plus haut ».
+Les montants des plafonds restent une configuration explicite dans `scripts/bouclier_detector.py`. Pour le Gazole : 1,99 €/L jusqu'au 19 mars 2026, 2,09 €/L du 20 mars au 7 avril, puis 2,25 €/L à partir du 8 avril ; pour le SP95, le plafond suivi est 1,99 €/L à partir du 1er mars 2023.
 
-Les montants des plafonds restent une configuration explicite dans `scripts/bouclier_detector.py`. La chronologie formelle retenue est celle de la dernière version de `app.js` fournie pour `carburantscorse1`. Le projet Corse-vs-BdR sauvegardé le 14 juin 2026 comporte des dates de transition légèrement différentes ; cette divergence est documentée et n'est pas utilisée pour modifier rétroactivement les zones historiques.
+L'interface lit les tolérances, populations et règles directement dans les métadonnées validées au lieu de conserver un seuil éditorial codé séparément.
 
 ## Fenêtre temporelle
 
@@ -99,7 +103,7 @@ Pour chaque jour, l'écart est calculé en HT entre la moyenne Corse et la **moy
 - **pendant action TotalEnergies** : une intervention Total est active sur **au moins un des deux carburants**, Gazole ou SP95 ;
 - **hors toute action TotalEnergies** : aucune intervention Total n'est active ce jour-là, ni sur le Gazole ni sur le SP95.
 
-Le calendrier éditorial est donc l'**union des périodes d'action Gazole et SP95**, et il est identique pour l'analyse des deux carburants. Ce point explique notamment le chiffre Gazole 2023 : retirer uniquement les périodes Gazole donne environ **17,0 c€/L**, alors que retirer l'union Gazole + SP95 redonne le chiffre historique **17,3 c€/L**.
+Le calendrier éditorial est donc l'**union des périodes d'action Gazole et SP95**, et il est identique pour l'analyse des deux carburants. Il est volontairement distinct du calendrier de détection du bouclier effectif décrit ci-dessus.
 
 La règle retrouvée reproduit au dixième près tous les chiffres historiques codés dans le dashboard :
 
@@ -116,26 +120,35 @@ Pour l'année en cours, `data.json` stocke automatiquement :
 - écart HT moyen hors toute action TotalEnergies ;
 - écart HT moyen pendant les actions TotalEnergies ;
 - calendrier commun des périodes utilisé pour ce découpage ;
-- statut courant du bouclier du carburant affiché, plafond, proportion de Total proches du plafond et 75e percentile des stations corses non-Total.
+- statut courant du bouclier du carburant affiché, plafond, population Total/non-Total, part des Total dans la bande du plafond et 75e percentile des stations corses non-Total.
 
 Un test de régression (`scripts/validate_editorial_history.py`) recalcule les chiffres historiques avant chaque validation de l'automatisation. Si la méthode dérive, le workflow échoue au lieu de publier silencieusement un autre indicateur sous le même nom.
 
+## Référence Rotterdam UFIP partagée avec C2
+
+C1 possède le téléchargement unique de la référence Rotterdam utilisée ensuite par C2. Le contrat accepté est explicite : **cotations Rotterdam Gazole en EUR/litre, source Thomson-Reuters, moyennes mobiles sur 5 jours**, telles qu'annoncées sur la page publique UFIP / Énergies et Mobilités. Aucune conversion tonne/litre n'est réalisée par A4C.
+
+Le téléchargement est refusé si la page source n'annonce plus cette unité, cette source ou ce lissage, ou si les valeurs exportées sont non finies ou économiquement incompatibles avec une série en EUR/litre. Le manifeste C1→C2 publie l'unité, la source, le lissage et les SHA-256 des actifs.
+
+Le retry UFIP compare désormais le **contenu date/valeur** de la semaine précédente avec la dernière source disponible : il relance C1 aussi bien lorsqu'une semaine incomplète devient complète que lorsqu'une cotation d'une semaine déjà complète est corrigée à date inchangée.
+
 ## Mise à jour hebdomadaire
 
-Le workflow `update-weekly.yml` s'exécute chaque **lundi à 07:00 heure de Paris**, été comme hiver :
+Le workflow `update-weekly.yml` vise chaque **lundi à 07:07 heure de Paris**, été comme hiver. Des watchdogs indépendants assurent le rattrapage si le déclenchement planifié est retardé ou absent.
 
-1. téléchargement du stock annuel officiel ;
-2. ajout des seuls jours nouveaux à `data.json` ;
-3. audit des séries station-carburant corses et application des garde-fous de population ;
-4. contrôles de cohérence des séries candidates ;
-5. détection prospective du bouclier effectif ;
-6. recalcul des indicateurs éditoriaux selon le calendrier commun d'actions TotalEnergies ;
-7. validation croisée des métadonnées et populations de stations ;
-8. production du résumé hebdomadaire par le même script que celui testé dans la PR ;
-9. commit automatique de `data.json` si les données ont réellement avancé ;
-10. demande explicite de reconstruction de GitHub Pages.
+La chaîne sélectionnée :
 
-S'il n'y a aucun nouveau jour officiel, l'exécution est un **no-op** : aucun commit inutile et aucune fausse date de mise à jour.
+1. télécharge les stocks annuels officiels ;
+2. vérifie la source UFIP et récupère une fois la référence Rotterdam ;
+3. met à jour de façon bornée le registre des enseignes ;
+4. construit le candidat V2 sans réécrire le préfixe historique protégé ;
+5. valide les séries, métadonnées, populations, bouclier et audit stations ;
+6. construit et valide le bundle C1→C2 ;
+7. ne promeut que le candidat conforme ;
+8. commit les changements réels, publie la release partagée et demande la reconstruction Pages si nécessaire ;
+9. un vérificateur métier indépendant exige ensuite la cohérence entre `main`, la release et le `data.json` réellement servi par Pages.
+
+S'il n'y a aucun nouveau jour officiel, le prix peut rester un **no-op** ; une nouvelle release reste néanmoins pertinente si un actif partagé tel qu'UFIP ou le registre a changé. Le succès métier est vérifié séparément de la simple conclusion technique du workflow.
 
 ## Crédits
 

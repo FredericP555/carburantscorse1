@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
-from resolve_corse_station_brands_incremental import ids_to_resolve
+from datetime import date
+
+from resolve_corse_station_brands_incremental import ids_to_fetch, ids_to_resolve
 from update_corse_station_brands import (
     classify_brand,
     classify_station,
@@ -16,7 +18,6 @@ for raw, expected in samples.items():
     got = extract_brand_from_html(raw)
     assert got == expected, (raw, got, expected)
 
-# A4C segmentation: tariff behaviour, not ownership category.
 assert classify_brand('E.Leclerc') == ('gms_lowcost', 'gms')
 assert classify_brand('TotalEnergies Access') == ('gms_lowcost', 'lowcost_major')
 assert classify_brand('Esso Express') == ('gms_lowcost', 'lowcost_major')
@@ -28,7 +29,6 @@ assert classify_brand('MARIOTTI ENERG') == ('traditionnel', 'marque_tradi')
 assert classify_brand(None) == ('inconnu', 'inconnu')
 assert classify_brand('') == ('inconnu', 'inconnu')
 
-# Brand correction applies first; station-ID correction has final priority.
 by_brand = {
     'vito': {
         'segment': 'traditionnel',
@@ -50,15 +50,24 @@ assert classify_station('20200001', 'VITO', by_id, by_brand) == (
     'inconnu', 'inconnu', 'correction_id'
 )
 
-# Incremental rule: a known resolved ID causes zero official brand lookup; only a new or
-# still-unresolved ID is returned for resolution.
 stations = {
-    '20000006': {'enseigne': 'TotalEnergies', 'segment': 'traditionnel'},
-    '20000007': {'enseigne': '', 'segment': 'inconnu'},
+    '20000006': {
+        'enseigne': 'TotalEnergies', 'segment': 'traditionnel', 'active': True,
+        'verified_at': '2026-09-01T00:00:00+00:00',
+    },
+    '20000007': {'enseigne': '', 'segment': 'inconnu', 'active': True},
+    '20000008': {
+        'enseigne': 'VITO', 'segment': 'traditionnel', 'active': True,
+        'verified_at': '2026-01-01T00:00:00+00:00',
+    },
 }
 assert ids_to_resolve({'20000006'}, stations) == []
 assert ids_to_resolve({'20000006', '20000007', '20999999'}, stations) == [
     '20000007', '20999999'
 ]
+assert ids_to_fetch(
+    {'20000006', '20000008'}, stations,
+    today=date(2026, 9, 8), reverify_days=90, limit=12,
+) == ['20000008']
 
-print('Station brand parser, A4C classification and incremental resolution: OK')
+print('Station brand parser, A4C classification and temporal incremental resolution: OK')

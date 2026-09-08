@@ -17,7 +17,6 @@ on:
 permissions:
   contents: write
 
-# Serialize every workflow that can push to main in C1.
 concurrency:
   group: c1-main-writers
   cancel-in-progress: false
@@ -42,10 +41,10 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
-      - name: Test brand parser and incremental classification
+      - name: Test brand parser and temporal incremental classification
         run: python scripts/test_station_brands.py
 
-      - name: Resolve only new or unresolved Corsica station IDs
+      - name: Resolve and periodically reverify Corsica station brands
         run: >-
           python scripts/resolve_corse_station_brands_incremental.py
           --output config/corse_station_brands.json
@@ -63,12 +62,22 @@ jobs:
           assert d['current_station_count'] >= 100, d['current_station_count']
           assert d['verified_brand_count'] >= d['current_station_count'] - 10
           assert set(d['segment_counts_current']) == {'gms_lowcost','traditionnel','inconnu'}
+          classification=d.get('classification') or {}
+          assert classification.get('brand_reverify_days') == 90
+          assert classification.get('brand_reverify_limit_per_run') == 12
 
           allowed={'enseigne','segment','detail','classification_source','brand_source',
-                   'active','first_seen','last_seen','verified_at'}
+                   'active','first_seen','last_seen','verified_at','brand_valid_from','brand_history'}
           assert all(set(v).issubset(allowed) for v in d['stations'].values())
           assert not any(any(k in v for k in ('address','city','cp','latitude','longitude'))
                          for v in d['stations'].values())
+          for entry in d['stations'].values():
+              history=entry.get('brand_history') or []
+              assert isinstance(history, list)
+              for period in history:
+                  assert isinstance(period, dict)
+                  assert period.get('valid_from') and period.get('valid_to')
+                  assert period['valid_from'] <= period['valid_to']
 
           active=[v for v in d['stations'].values() if v.get('active')]
           brands=[str(v.get('enseigne') or '').casefold() for v in active]
@@ -95,5 +104,5 @@ jobs:
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add config/corse_station_brands.json
-          git commit -m 'Resolve new Corsica station brands'
+          git commit -m 'Refresh temporal Corsica station brands'
           git push origin "HEAD:${GITHUB_REF_NAME:-main}"
