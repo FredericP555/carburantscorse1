@@ -13,7 +13,7 @@ permissions:
   pages: write
 
 concurrency:
-  group: weekly-fuel-observatory
+  group: c1-main-writers
   cancel-in-progress: false
 
 env:
@@ -96,6 +96,12 @@ jobs:
       - name: Checkout triggering ref
         if: steps.clock.outputs.run == 'true'
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Capture writer base SHA
+        if: steps.clock.outputs.run == 'true'
+        run: echo "WRITER_BASE_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
 
       - name: Set up Python
         if: steps.clock.outputs.run == 'true'
@@ -203,16 +209,24 @@ jobs:
 
       - name: Commit updated C1 data and Corsica station registry
         if: steps.clock.outputs.run == 'true' && github.ref_name == github.event.repository.default_branch
+        shell: bash
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          set -euo pipefail
           git add data.json config/corse_station_brands.json
           if git diff --cached --quiet; then
             echo "No C1 repository data/registry commit required."
-          else
-            git commit -m "Update C1 V2 fuel data $(date -u +%Y-%m-%d)"
-            git push origin "HEAD:${GITHUB_REF_NAME}"
+            exit 0
           fi
+          git fetch origin "+refs/heads/${GITHUB_REF_NAME:-main}:refs/remotes/origin/${GITHUB_REF_NAME:-main}"
+          remote_sha=$(git rev-parse "origin/${GITHUB_REF_NAME:-main}")
+          if [ "$remote_sha" != "$WRITER_BASE_SHA" ]; then
+            echo "Main advanced while this writer was running: base=$WRITER_BASE_SHA remote=$remote_sha" >&2
+            exit 1
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "Update C1 V2 fuel data $(date -u +%Y-%m-%d)"
+          git push origin "HEAD:${GITHUB_REF_NAME}"
 
       - name: Publish validated C1 V2 shared release
         if: steps.clock.outputs.run == 'true' && github.ref_name == github.event.repository.default_branch
@@ -220,8 +234,14 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          tag="a4c-v2-shared-$(date -u +%Y%m%dT%H%M%SZ)-${GITHUB_RUN_ID}"
+          git fetch origin "+refs/heads/${GITHUB_REF_NAME:-main}:refs/remotes/origin/${GITHUB_REF_NAME:-main}"
+          remote_sha=$(git rev-parse "origin/${GITHUB_REF_NAME:-main}")
           target="$(git rev-parse HEAD)"
+          if [ "$remote_sha" != "$target" ]; then
+            echo "Main advanced while this writer was running: local=$target remote=$remote_sha" >&2
+            exit 1
+          fi
+          tag="a4c-v2-shared-$(date -u +%Y%m%dT%H%M%SZ)-${GITHUB_RUN_ID}"
           gh release create "$tag" \
             outputs/shared/official_13_20.csv.gz \
             outputs/shared/official_13_20_events.csv.gz \
