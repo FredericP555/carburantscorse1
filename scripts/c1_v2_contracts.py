@@ -230,6 +230,17 @@ def validate_bouclier_contract(meta: dict) -> None:
             )
         if not isinstance(node["ranges"], list):
             _fail(f"bouclier.{fuel}.ranges is not a list")
+        if not isinstance(node["current_active"], bool):
+            _fail(f"bouclier.{fuel}.current_active is not boolean")
+
+        try:
+            evaluated_day = date.fromisoformat(str(node["evaluated_through"]))
+        except ValueError as exc:
+            raise ValueError(
+                f"bouclier.{fuel}.evaluated_through invalid: {node['evaluated_through']!r}"
+            ) from exc
+
+        parsed_ranges: list[tuple[date, date]] = []
         previous_end = None
         for item in node["ranges"]:
             try:
@@ -241,6 +252,7 @@ def validate_bouclier_contract(meta: dict) -> None:
                 _fail(f"bouclier.{fuel}: inverted range {item!r}")
             if previous_end is not None and start <= previous_end:
                 _fail(f"bouclier.{fuel}: overlapping/unordered ranges")
+            parsed_ranges.append((start, end))
             previous_end = end
 
         expected_phases = _expected_phase_json(bmeta, fuel)
@@ -257,13 +269,46 @@ def validate_bouclier_contract(meta: dict) -> None:
                 _fail(f"bouclier.{fuel}.{field} invalid: {value!r}")
         if node["latest_non_total_p75"] is None:
             _fail(f"bouclier.{fuel}.latest_non_total_p75 missing")
+
+        covering_range = next(
+            ((start, end) for start, end in parsed_ranges if start <= evaluated_day <= end),
+            None,
+        )
         if node["current_active"]:
+            if covering_range is None:
+                _fail(
+                    f"bouclier.{fuel}: active but no effective range covers {evaluated_day}"
+                )
             if not node["current_active_since"]:
                 _fail(f"bouclier.{fuel}: active without current_active_since")
+            try:
+                active_since = date.fromisoformat(str(node["current_active_since"]))
+            except ValueError as exc:
+                raise ValueError(
+                    f"bouclier.{fuel}.current_active_since invalid: {node['current_active_since']!r}"
+                ) from exc
+            if active_since != covering_range[0]:
+                _fail(
+                    f"bouclier.{fuel}: current_active_since={active_since} does not match "
+                    f"covering range start {covering_range[0]}"
+                )
             if node["current_cap"] is None:
                 _fail(f"bouclier.{fuel}: active without current_cap")
+            phase = shield_phase_v2.phase_for_day(bmeta, fuel, evaluated_day)
+            if phase is None:
+                _fail(f"bouclier.{fuel}: active without a cap phase on {evaluated_day}")
+            current_cap = _finite(node["current_cap"])
+            if abs(current_cap - float(phase.cap)) > 1e-9:
+                _fail(
+                    f"bouclier.{fuel}: current_cap={current_cap:.3f} does not match "
+                    f"effective phase cap {phase.cap:.3f} on {evaluated_day}"
+                )
             if node["latest_at_cap_count"] < 1:
                 _fail(f"bouclier.{fuel}: active without a Total station at cap")
+        elif covering_range is not None:
+            _fail(
+                f"bouclier.{fuel}: inactive but effective range covers {evaluated_day}"
+            )
 
 
 def refresh_publication_metadata(candidate: dict, baseline: dict, summary: dict) -> tuple[dict, dict]:
