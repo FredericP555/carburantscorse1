@@ -61,6 +61,10 @@ jobs:
           print('Dry-run self-test:', dry_run)
           PY
 
+      - name: Checkout current C1 content for receipt validation
+        if: steps.clock.outputs.selected == 'true'
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
       - name: Evaluate C1 business publication state
         if: steps.clock.outputs.selected == 'true'
         id: state
@@ -113,6 +117,14 @@ jobs:
 
           business_run=""
           if [ -n "$latest_today" ]; then
+            pages_capture_ok=true
+            cache="${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+            if ! curl --fail --location --silent --show-error --retry 2 \
+                 "https://fredericp555.github.io/carburantscorse1/data.json?a4c_watchdog=$cache" \
+                 -o /tmp/c1-pages-data.json; then
+              pages_capture_ok=false
+            fi
+
             rm -rf /tmp/c1-business-receipts
             mkdir -p /tmp/c1-business-receipts
             while read -r run_id; do
@@ -124,9 +136,12 @@ jobs:
                    --name c1-business-success-receipt \
                    --dir "$dir" >/dev/null 2>&1; then
                 receipt="$dir/c1-business-success.json"
-                if [ -f "$receipt" ] && jq -e --arg tag "$latest_today" \
-                     '.status == "business-success" and .release_tag == $tag and .pages_sha256 == .expected_sha256 and .release_data_sha256 == .expected_sha256' \
-                     "$receipt" >/dev/null; then
+                if [ "$pages_capture_ok" = true ] && [ -f "$receipt" ] && \
+                   python scripts/validate_current_c1_receipt.py \
+                     --receipt "$receipt" \
+                     --expected-tag "$latest_today" \
+                     --pages-data-file /tmp/c1-pages-data.json \
+                     >/dev/null 2>&1; then
                   business_run="$run_id"
                   break
                 fi
@@ -150,13 +165,13 @@ jobs:
             fi
           elif [ -n "$business_run" ]; then
             action="none"
-            reason="C1 business success is proven for today's latest release: $latest_today (verifier run $business_run)"
+            reason="C1 business success is proven for today's latest release and still matches current repository/Pages content: $latest_today (verifier run $business_run)"
           elif [ "$active_update" -gt 0 ] || [ "$active_verify" -gt 0 ]; then
             action="wait"
             reason="publication exists but production or end-to-end verification is still active"
           else
             action="repair-publication"
-            reason="C1 release exists but no matching end-to-end business-success receipt proves what Pages serves"
+            reason="C1 release exists but no still-current end-to-end business-success receipt proves what Pages serves"
           fi
 
           echo "action=$action" >> "$GITHUB_OUTPUT"
@@ -204,7 +219,7 @@ jobs:
           {
             echo '## C1 business-aware weekly watchdog'
             echo "- Latest C1 release today: ${{ steps.state.outputs.release_today || 'none' }}"
-            echo "- Matching business-success run: ${{ steps.state.outputs.business_run || 'none' }}"
+            echo "- Matching current business-success run: ${{ steps.state.outputs.business_run || 'none' }}"
             echo "- Active full C1 runs: ${{ steps.state.outputs.active_updates || '0' }}"
             echo "- Active C1 business verifiers: ${{ steps.state.outputs.active_verifiers || '0' }}"
             echo "- Decision: ${{ steps.state.outputs.action || 'not evaluated' }}"
