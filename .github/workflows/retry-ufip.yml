@@ -21,6 +21,7 @@ on:
     paths:
       - .github/workflows/retry-ufip.yml
       - scripts/ufip_retry_policy.py
+      - scripts/fetch_ufip.py
       - a4c_common/ufip.py
   workflow_dispatch:
 
