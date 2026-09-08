@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 from datetime import date
 
+from ensure_station_brand_registry_policy import ensure_policy_metadata
 from resolve_corse_station_brands_incremental import ids_to_fetch, ids_to_resolve
 from update_corse_station_brands import (
     classify_brand,
@@ -69,5 +70,23 @@ assert ids_to_fetch(
     {'20000006', '20000008'}, stations,
     today=date(2026, 9, 8), reverify_days=90, limit=12,
 ) == ['20000008']
+
+# Policy metadata must be persistable even when no station identity changed.
+legacy_registry = {
+    'schema': 'a4c-corsica-station-brands-v2',
+    'classification': {
+        'segments': ['gms_lowcost', 'traditionnel', 'inconnu'],
+        'unknown_policy': 'inconnu is excluded from network comparisons',
+        'corrections_file': 'config/corse_station_brand_corrections.csv',
+    },
+    'stations': {},
+}
+normalized, changed = ensure_policy_metadata(legacy_registry)
+assert changed is True
+assert normalized['classification']['brand_reverify_days'] == 90
+assert normalized['classification']['brand_reverify_limit_per_run'] == 12
+normalized_again, changed_again = ensure_policy_metadata(normalized)
+assert changed_again is False
+assert normalized_again == normalized
 
 print('Station brand parser, A4C classification and temporal incremental resolution: OK')

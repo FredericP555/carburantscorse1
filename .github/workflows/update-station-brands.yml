@@ -10,6 +10,7 @@ on:
     paths:
       - 'scripts/update_corse_station_brands.py'
       - 'scripts/resolve_corse_station_brands_incremental.py'
+      - 'scripts/ensure_station_brand_registry_policy.py'
       - 'scripts/test_station_brands.py'
       - 'config/corse_station_brand_corrections.csv'
       - '.github/workflows/update-station-brands.yml'
@@ -50,6 +51,11 @@ jobs:
           python scripts/resolve_corse_station_brands_incremental.py
           --output config/corse_station_brands.json
           --corrections config/corse_station_brand_corrections.csv
+
+      - name: Persist current station-brand policy metadata
+        run: >-
+          python scripts/ensure_station_brand_registry_policy.py
+          --path config/corse_station_brands.json
 
       - name: Validate compact registry quality
         run: |
