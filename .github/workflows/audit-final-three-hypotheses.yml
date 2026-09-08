@@ -6,6 +6,7 @@ on:
       - audit/final-three-hypotheses
     paths:
       - 'audit/final_three_c1.py'
+      - 'audit/check_legacy_folelli_usage.py'
       - '.github/workflows/audit-final-three-hypotheses.yml'
 
 permissions:
@@ -26,14 +27,8 @@ jobs:
         run: python -m pip install --disable-pip-version-check -r requirements.lock.txt
       - name: H1 inspect official Folelli lineage evidence
         run: python audit/final_three_c1.py folelli | tee /tmp/folelli.json
-      - name: H1 locate every use of legacy Total/Folelli aliases
-        run: |
-          echo '--- historical_aliases references ---'
-          grep -RIn --exclude-dir=.git --exclude='audit-final-three-hypotheses.yml' 'historical_aliases' . || true
-          echo '--- total_corse_stations references outside its own JSON ---'
-          grep -RIn --exclude-dir=.git --exclude='total_corse_stations.json' 'total_corse_stations' . || true
-          echo '--- direct 20213003/07/08 references outside audit and registry JSON ---'
-          grep -RIn --exclude-dir=.git --exclude-dir=audit --exclude='total_corse_stations.json' --exclude='corse_station_brands.json' -E '20213003|20213007|20213008' . || true
+      - name: H1 prove legacy Folelli aliases are not consumed by production
+        run: python audit/check_legacy_folelli_usage.py
       - name: Start static server
         run: |
           python3 -m http.server 8000 > /tmp/a4c-audit-http.log 2>&1 &
