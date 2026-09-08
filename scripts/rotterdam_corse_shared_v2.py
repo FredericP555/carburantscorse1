@@ -1,20 +1,10 @@
 #!/usr/bin/env python3
 """Canonical prepared Corsica Rotterdam calibration produced upstream by C1.
 
-C1 owns the single UFIP download. R2 is an admissibility threshold for stale
-station prices in the double-cap case; it never defines whether the shield
-itself is effective.
-
-The 2026 reference dates calibrate the territorial coefficient ``k`` only.
-For every effective-shield cap phase, R1 is recomputed from the three last
-actually observed Rotterdam quotations before that phase starts, and the phase
-threshold is ``R2 = k * R1``. Therefore a later return of prices to the Total
-ceiling creates a new phase with a new R1/R2, without changing k.
-
-Once Rotterdam falls below the R2 of the current phase after a target price has
-become stale, that old target price stays excluded until the target fuel is
-declared again. This is reconstructed from the daily series rather than stored
-as mutable state.
+C1 owns the single UFIP download. R2 is an admissibility threshold for stale station prices in
+the double-cap case; it never defines whether the shield itself is effective. The upstream UFIP
+series is explicitly contracted as Rotterdam Gazole in EUR/L, Thomson-Reuters, 5-day moving
+average; those semantics are carried in the shared manifest consumed by C2.
 """
 from __future__ import annotations
 
@@ -25,6 +15,8 @@ from datetime import date, timedelta
 from pathlib import Path
 from statistics import mean
 from typing import Mapping
+
+from a4c_common.ufip import ROTTERDAM_REFERENCE_SOURCE, ROTTERDAM_SMOOTHING, ROTTERDAM_UNIT
 
 OBSERVED_FILE = Path("outputs/ufip/rotterdam_gazole_observed.csv")
 DAILY_FILE = Path("outputs/ufip/rotterdam_gazole_daily.csv")
@@ -44,8 +36,8 @@ def _finite_float(raw: str | float, *, context: str) -> float:
         value = float(raw)
     except (TypeError, ValueError) as exc:
         raise ValueError(f"Invalid Rotterdam value in {context}: {raw!r}") from exc
-    if not math.isfinite(value):
-        raise ValueError(f"Non-finite Rotterdam value in {context}: {raw!r}")
+    if not math.isfinite(value) or value <= 0:
+        raise ValueError(f"Non-finite/non-positive Rotterdam value in {context}: {raw!r}")
     return value
 
 
@@ -165,7 +157,12 @@ def shared_metadata(observed_file: str | Path = OBSERVED_FILE, daily_file: str |
     if not observed_path.exists() or not daily_path.exists():
         raise FileNotFoundError("C1 shared Rotterdam files must exist before shared snapshot export")
     return {
-        "provider": "UFIP",
+        "provider": "UFIP / Energies et Mobilites",
+        "reference_source": ROTTERDAM_REFERENCE_SOURCE,
+        "unit": ROTTERDAM_UNIT,
+        "smoothing": ROTTERDAM_SMOOTHING,
+        "series": "Rotterdam Gazole quotation",
+        "method_note": "UFIP public custom-value page: Rotterdam quotations in EUR/litre, source Thomson-Reuters, 5-day moving averages; no tonne/litre conversion is applied by A4C",
         "download_owner": "FredericP555/carburantscorse1",
         "single_download": True,
         "observed_asset": observed_path.name,
