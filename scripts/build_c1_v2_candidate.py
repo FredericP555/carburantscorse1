@@ -27,7 +27,7 @@ import zipfile
 
 import pandas as pd
 
-from a4c_common.corse_brand import TOTAL, classify_registry_entry
+from a4c_common.corse_brand import NON_TOTAL_CONFIRMED, TOTAL, UNKNOWN, classify_registry_entry
 from a4c_common.price_math import at_cap
 import bouclier_detector
 import c1_bouclier_meta
@@ -130,6 +130,11 @@ def _dedupe_updates(values: list[tuple[datetime, float | None]]) -> list[tuple[d
     return sorted(per_day.values(), key=lambda x: x[0])
 
 
+def _corsica_brand_classification(entry: dict | None, day: date) -> str:
+    """Return the verified station identity that was valid on the day being calculated."""
+    return classify_registry_entry(entry, on_date=day)
+
+
 class EventGuard:
     def __init__(self, events: list[tuple], declarations: dict):
         self.ruptures: dict[tuple[str, str], list[tuple[date, date | None]]] = defaultdict(list)
@@ -165,8 +170,6 @@ class EventGuard:
                 continue
             if kind == "rupture": self.ruptures[(sid, fuel)].append((started.date(), end_day))
             else: self.closures[sid].append((started.date(), end_day))
-        # Open-ended intervals have end=None. Sort only on the start date so an
-        # explicit-ended interval with the same start never compares date to None.
         for values in self.ruptures.values(): values.sort(key=lambda interval: interval[0])
         for values in self.closures.values(): values.sort(key=lambda interval: interval[0])
         self.stats["event_rows_unique"] = len(seen)
@@ -217,6 +220,8 @@ def build_v2_daily(years: list[int], start: date, end: date) -> tuple[pd.DataFra
         stations[(sid, region)].add(fuel)
     pointers: dict = {}
     sums = defaultdict(float); counts = defaultdict(int); reasons = Counter(); r2 = Counter()
+    brand_checks = Counter(); eligible_brand_station_days = Counter()
+    latest_eligible_by_fuel = {fuel: Counter() for fuel in TARGET_FUELS}
     days = [d.date() for d in pd.date_range(start, end, freq="D")]
     phase_cache = {}
     def phase(fuel: str, day: date):
@@ -226,9 +231,11 @@ def build_v2_daily(years: list[int], start: date, end: date) -> tuple[pd.DataFra
 
     for (sid, region), fuels in stations.items():
         region_kind = "corsica" if region == "corse" else "mainland"
-        is_total = classify_registry_entry(brands.get(sid)) == TOTAL if region_kind == "corsica" else False
+        brand_entry = brands.get(sid) if region_kind == "corsica" else None
         relevant = set(fuels) | set(TARGET_FUELS)
         for day in days:
+            brand_class = _corsica_brand_classification(brand_entry, day) if region_kind == "corsica" else None
+            is_total = brand_class == TOTAL
             state = {}
             for fuel in relevant:
                 updates = declarations.get((sid, region, fuel), [])
@@ -238,6 +245,8 @@ def build_v2_daily(years: list[int], start: date, end: date) -> tuple[pd.DataFra
             gp=phase("Gazole",day); sp=phase("SP95",day); gazole_cap=gp.cap if gp else None; sp95_cap=sp.cap if sp else None
             for fuel in TARGET_FUELS:
                 last_ts, last_price = state.get(fuel, (None, None)); target_phase=phase(fuel,day)
+                if region_kind == "corsica":
+                    brand_checks[f"{fuel}/{brand_class}"] += 1
                 r2_verdict=None; age=reliability_policy_v2.age_days(last_ts,day)
                 if region_kind == "corsica" and age is not None and age >= reliability_policy_v2.NORMAL_MAX_AGE_DAYS and at_cap(gazole_price,gazole_cap) and at_cap(sp95_price,sp95_cap):
                     r2["calls"] += 1
@@ -250,6 +259,10 @@ def build_v2_daily(years: list[int], start: date, end: date) -> tuple[pd.DataFra
                 reasons[f"{region_kind}/{fuel}/{decision.reason}"] += 1
                 if decision.eligible:
                     sums[(fuel, region, day)] += float(last_price); counts[(fuel, region, day)] += 1
+                    if region_kind == "corsica":
+                        eligible_brand_station_days[f"{fuel}/{brand_class}"] += 1
+                        if day == end:
+                            latest_eligible_by_fuel[fuel][brand_class] += 1
 
     rows=[]
     for fuel in TARGET_FUELS:
@@ -264,7 +277,35 @@ def build_v2_daily(years: list[int], start: date, end: date) -> tuple[pd.DataFra
                 vat=1.13 if region=="corse" else 1.20
                 rows.append((fuel,region,pd.Timestamp(day),ttc,ttc/vat))
     df=pd.DataFrame(rows,columns=["fuel","region","date","ttc","ht"])
-    audit={"source_max_date":source_max.isoformat(),"evaluated_start":start.isoformat(),"evaluated_end":end.isoformat(),"reason_counts":dict(reasons),"r2":dict(r2),"events":dict(guard.stats),"bouclier":bouclier}
+
+    v2_latest_population = {}
+    detector_latest_population = {}
+    for fuel in TARGET_FUELS:
+        counts_by_brand = latest_eligible_by_fuel[fuel]
+        v2_latest_population[fuel] = {
+            TOTAL: int(counts_by_brand.get(TOTAL, 0)),
+            NON_TOTAL_CONFIRMED: int(counts_by_brand.get(NON_TOTAL_CONFIRMED, 0)),
+            UNKNOWN: int(counts_by_brand.get(UNKNOWN, 0)),
+            "total_eligible": int(sum(counts_by_brand.values())),
+        }
+        detector_node = bouclier.get(fuel) or {}
+        detector_latest_population[fuel] = {
+            "TOTAL": detector_node.get("latest_total_stations"),
+            "NON_TOTAL": detector_node.get("latest_non_total_stations"),
+        }
+
+    brand_reconciliation = {
+        "classification_policy": "corse_station_brands temporal periods resolved with classify_registry_entry(..., on_date=calculated_day)",
+        "classification_is_date_aware": True,
+        "latest_day": end.isoformat(),
+        "classification_checks_by_fuel_and_brand": dict(sorted(brand_checks.items())),
+        "eligible_station_days_by_fuel_and_brand": dict(sorted(eligible_brand_station_days.items())),
+        "v2_latest_eligible_population": v2_latest_population,
+        "detector_latest_population": detector_latest_population,
+        "legacy_station_audit_scope": "separate 45-day coverage guard; it does not apply V2 event/R2/phase exceptions and is not expected to equal V2 eligible populations",
+        "detector_scope": "effective-shield detector uses its documented current+historical Total registry; its population is reported separately and is not forced to equal V2",
+    }
+    audit={"source_max_date":source_max.isoformat(),"evaluated_start":start.isoformat(),"evaluated_end":end.isoformat(),"reason_counts":dict(reasons),"r2":dict(r2),"events":dict(guard.stats),"bouclier":bouclier,"brand_population_reconciliation":brand_reconciliation}
     return df,audit
 
 
@@ -330,7 +371,7 @@ def main() -> None:
             elif merged[-1][0] > old_last:
                 first_new=old_last+1; first_week=_monday_offset(first_new); first_month=_month_key(first_new); candidate[short][region]["w"]=[p for p in baseline[short][region]["w"] if p[0] < first_week]+_weekly(merged,first_week); candidate[short][region]["m"]=[p for p in baseline[short][region]["m"] if p[0] < first_month]+_monthly(merged,first_month)
 
-    meta=c1_bouclier_meta.attach_detector_bouclier(baseline.get("meta") or {},audit.get("bouclier")); meta=c1_last_date.attach_last_date(meta,candidate); meta["v2"]={"active":True,"version":"A4C-C1-V2-2026-07-23","daily_switch_date":SWITCH_DAY.isoformat(),"weekly_switch_date":WEEKLY_SWITCH.isoformat(),"monthly_switch":"2026-08","history_before_switch_preserved":True,"controlled_transition_applied":initial or bool((meta.get("v2") or {}).get("controlled_transition_applied")),"event_reopening_rule":"open rupture -> later same-fuel declaration; open closure -> later any-fuel station declaration; explicit end wins"}; candidate["meta"]=meta
+    meta=c1_bouclier_meta.attach_detector_bouclier(baseline.get("meta") or {},audit.get("bouclier")); meta=c1_last_date.attach_last_date(meta,candidate); meta["v2"]={"active":True,"version":"A4C-C1-V2-2026-07-23","daily_switch_date":SWITCH_DAY.isoformat(),"weekly_switch_date":WEEKLY_SWITCH.isoformat(),"monthly_switch":"2026-08","history_before_switch_preserved":True,"controlled_transition_applied":initial or bool((meta.get("v2") or {}).get("controlled_transition_applied")),"event_reopening_rule":"open rupture -> later same-fuel declaration; open closure -> later any-fuel station declaration; explicit end wins","station_brand_classification":"temporal registry classification resolved on each calculated day"}; candidate["meta"]=meta
     output=ROOT/args.output; summary_path=ROOT/args.summary; output.parent.mkdir(parents=True,exist_ok=True); summary_path.parent.mkdir(parents=True,exist_ok=True); output.write_text(json.dumps(candidate,ensure_ascii=False,separators=(",",":")),encoding="utf-8")
     switch_off=(SWITCH_DAY-core.ORIGIN).days; protected=0
     for fuel,short in core.FUELS.items():
