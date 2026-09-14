@@ -1,10 +1,10 @@
 {
   "schema": "a4c-corsica-station-brands-v2",
-  "generated_at": "2026-09-08T00:11:24.887013+00:00",
+  "generated_at": "2026-09-14T10:32:55.011502+00:00",
   "source": {
     "station_ids": "official annual fuel-price stock already used by the A4C update",
-    "enseigne": "official prix-carburants.gouv.fr station detail HTML, queried only for new/unresolved IDs",
-    "note": "Known resolved IDs are not refetched; disappeared IDs remain for historical classification."
+    "enseigne": "official prix-carburants.gouv.fr station detail HTML",
+    "note": "New/unresolved/returning IDs are queried immediately; resolved active IDs are reverified oldest-first on a bounded 90-day policy. Brand changes are prospective and previous periods remain in brand_history."
   },
   "classification": {
     "segments": [
@@ -15,19 +15,20 @@
     "unknown_policy": "inconnu is excluded from network comparisons",
     "corrections_file": "config/corse_station_brand_corrections.csv",
     "brand_reverify_days": 90,
-    "brand_reverify_limit_per_run": 12
+    "brand_reverify_limit_per_run": 12,
+    "temporal_policy": "a detected brand/classification change becomes valid on its verification date; earlier periods are preserved"
   },
-  "current_station_count": 112,
-  "verified_brand_count": 112,
+  "current_station_count": 104,
+  "verified_brand_count": 104,
   "fetch_error_count": 0,
   "unresolved_current_count": 0,
   "segment_counts_current": {
     "gms_lowcost": 0,
     "inconnu": 0,
-    "traditionnel": 112
+    "traditionnel": 104
   },
   "detail_counts_current": {
-    "major_tradi": 51,
+    "major_tradi": 43,
     "marque_tradi": 61
   },
   "stations": {
@@ -213,7 +214,7 @@
       "detail": "major_tradi",
       "classification_source": "auto",
       "brand_source": "officiel",
-      "active": true,
+      "active": false,
       "first_seen": "2026-08-19",
       "last_seen": "2026-08-19",
       "verified_at": "2026-08-19T12:19:15.155041+00:00"
@@ -246,7 +247,7 @@
       "detail": "major_tradi",
       "classification_source": "auto",
       "brand_source": "officiel",
-      "active": true,
+      "active": false,
       "first_seen": "2026-08-19",
       "last_seen": "2026-08-19",
       "verified_at": "2026-08-19T12:19:15.155041+00:00"
@@ -268,7 +269,7 @@
       "detail": "major_tradi",
       "classification_source": "auto",
       "brand_source": "officiel",
-      "active": true,
+      "active": false,
       "first_seen": "2026-08-19",
       "last_seen": "2026-08-19",
       "verified_at": "2026-08-19T12:19:15.155041+00:00"
@@ -334,7 +335,7 @@
       "detail": "major_tradi",
       "classification_source": "auto",
       "brand_source": "officiel",
-      "active": true,
+      "active": false,
       "first_seen": "2026-08-19",
       "last_seen": "2026-08-19",
       "verified_at": "2026-08-19T12:19:15.155041+00:00"
@@ -422,7 +423,7 @@
       "detail": "major_tradi",
       "classification_source": "auto",
       "brand_source": "officiel",
-      "active": true,
+      "active": false,
       "first_seen": "2026-08-19",
       "last_seen": "2026-08-19",
       "verified_at": "2026-08-19T12:19:15.155041+00:00"
@@ -631,7 +632,7 @@
       "detail": "major_tradi",
       "classification_source": "auto",
       "brand_source": "officiel",
-      "active": true,
+      "active": false,
       "first_seen": "2026-08-19",
       "last_seen": "2026-08-19",
       "verified_at": "2026-08-19T12:19:15.155041+00:00"
@@ -873,7 +874,7 @@
       "detail": "major_tradi",
       "classification_source": "auto",
       "brand_source": "officiel",
-      "active": true,
+      "active": false,
       "first_seen": "2026-08-19",
       "last_seen": "2026-08-19",
       "verified_at": "2026-08-19T12:19:15.155041+00:00"
@@ -950,7 +951,7 @@
       "detail": "major_tradi",
       "classification_source": "auto",
       "brand_source": "officiel",
-      "active": true,
+      "active": false,
       "first_seen": "2026-08-19",
       "last_seen": "2026-08-19",
       "verified_at": "2026-08-19T12:19:15.155041+00:00"
