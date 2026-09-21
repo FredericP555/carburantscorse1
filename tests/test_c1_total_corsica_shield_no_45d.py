@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from datetime import date, datetime, timezone
-import unittest
+from datetime import date, datetime, timedelta, timezone
 from types import SimpleNamespace
+import unittest
 from unittest.mock import patch
 
 from scripts import r2_guard_v2 as r2_guard
@@ -14,15 +14,12 @@ PHASE_START = date(2026, 6, 1)
 
 
 def decision(*, fuel="Gazole", age_days=90, is_total=True, shield=True, price=None,
-             cap=None, r2=True):
+             cap=None, r2=True, phase_start=PHASE_START):
     if price is None:
         price = 2.25 if fuel == "Gazole" else 1.99
     if cap is None:
         cap = 2.25 if fuel == "Gazole" else 1.99
-    last = datetime.combine(DAY, datetime.min.time(), tzinfo=timezone.utc)
-    last = last.replace(year=DAY.year)  # explicit tz-aware anchor
-    from datetime import timedelta
-    last = last - timedelta(days=age_days)
+    last = datetime(2026, 9, 21, tzinfo=timezone.utc) - timedelta(days=age_days)
     return policy.evaluate(
         day=DAY,
         region_kind="corsica",
@@ -77,42 +74,51 @@ class CorsicaPerFuelUfipGuardTests(unittest.TestCase):
             )
         self.assertEqual(admissible.call_args.args[0], phase.started_on)
 
+
 class TotalCorsicaShieldNo45DayCutoffTests(unittest.TestCase):
     def test_gazole_total_at_cap_survives_90_days_when_ufip_guard_is_admissible(self):
-        result = decision(fuel="Gazole", age_days=90, r2=True)
-        self.assertTrue(result.eligible)
+        self.assertTrue(decision(fuel="Gazole", age_days=90, r2=True).eligible)
 
     def test_sp95_is_evaluated_independently_from_gazole_cap_state(self):
-        result = decision(fuel="SP95", age_days=90, r2=True)
-        self.assertTrue(result.eligible)
+        self.assertTrue(decision(fuel="SP95", age_days=90, r2=True).eligible)
 
     def test_45_days_is_not_a_cutoff_for_total_under_effective_shield(self):
-        result = decision(fuel="Gazole", age_days=45, r2=True)
-        self.assertTrue(result.eligible)
+        self.assertTrue(decision(fuel="Gazole", age_days=45, r2=True).eligible)
 
     def test_very_old_total_price_can_remain_valid_under_effective_shield(self):
-        result = decision(fuel="Gazole", age_days=180, r2=True)
-        self.assertTrue(result.eligible)
+        self.assertTrue(
+            decision(
+                fuel="Gazole",
+                age_days=180,
+                r2=True,
+                phase_start=date(2026, 1, 1),
+            ).eligible
+        )
+
+    def test_price_already_stale_before_phase_is_not_resurrected(self):
+        self.assertFalse(
+            decision(
+                fuel="Gazole",
+                age_days=180,
+                r2=True,
+                phase_start=date(2026, 8, 1),
+            ).eligible
+        )
 
     def test_ufip_guard_still_blocks_extension(self):
-        result = decision(fuel="Gazole", age_days=90, r2=False)
-        self.assertFalse(result.eligible)
+        self.assertFalse(decision(fuel="Gazole", age_days=90, r2=False).eligible)
 
     def test_missing_ufip_guard_fails_closed(self):
-        result = decision(fuel="Gazole", age_days=90, r2=None)
-        self.assertFalse(result.eligible)
+        self.assertFalse(decision(fuel="Gazole", age_days=90, r2=None).eligible)
 
     def test_non_total_does_not_get_the_exception(self):
-        result = decision(fuel="Gazole", age_days=90, is_total=False, r2=True)
-        self.assertFalse(result.eligible)
+        self.assertFalse(decision(fuel="Gazole", age_days=90, is_total=False, r2=True).eligible)
 
     def test_price_not_at_cap_does_not_get_the_exception(self):
-        result = decision(fuel="Gazole", age_days=90, price=2.24, r2=True)
-        self.assertFalse(result.eligible)
+        self.assertFalse(decision(fuel="Gazole", age_days=90, price=2.24, r2=True).eligible)
 
     def test_no_effective_shield_means_normal_staleness_rule(self):
-        result = decision(fuel="Gazole", age_days=90, shield=False, r2=True)
-        self.assertFalse(result.eligible)
+        self.assertFalse(decision(fuel="Gazole", age_days=90, shield=False, r2=True).eligible)
 
     def test_fresh_official_price_remains_valid_without_ufip_extension(self):
         result = decision(fuel="Gazole", age_days=10, r2=None)
