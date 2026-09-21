@@ -2,7 +2,10 @@ from __future__ import annotations
 
 from datetime import date, datetime, timezone
 import unittest
+from types import SimpleNamespace
+from unittest.mock import patch
 
+from scripts import r2_guard_v2 as r2_guard
 from scripts import reliability_policy_v2 as policy
 
 
@@ -41,6 +44,38 @@ def decision(*, fuel="Gazole", age_days=90, is_total=True, shield=True, price=No
         rotterdam_stale_price_admissible=r2,
     )
 
+
+class CorsicaPerFuelUfipGuardTests(unittest.TestCase):
+    def test_sp95_guard_uses_sp95_phase_and_declaration_day(self):
+        declared = datetime(2026, 7, 15, tzinfo=timezone.utc)
+        phase = SimpleNamespace(started_on=date(2026, 3, 12))
+        with (
+            patch("scripts.r2_guard_v2.shield_phase.phase_for_day", return_value=phase) as phase_for_day,
+            patch("scripts.r2_guard_v2.rotterdam.admissible_since", return_value=True) as admissible,
+        ):
+            self.assertTrue(
+                r2_guard.corsica_shield_price_admissible(
+                    declared, DAY, "SP95", bouclier_metadata={"SP95": {}}
+                )
+            )
+        phase_for_day.assert_called_once_with({"SP95": {}}, "SP95", DAY)
+        self.assertEqual(admissible.call_args.args[0], declared.date())
+        self.assertEqual(admissible.call_args.args[1], DAY)
+        self.assertEqual(admissible.call_args.kwargs["phase_started_on"], phase.started_on)
+
+    def test_pre_phase_declaration_starts_ufip_window_at_phase_start(self):
+        declared = datetime(2026, 3, 25, tzinfo=timezone.utc)
+        phase = SimpleNamespace(started_on=date(2026, 4, 8))
+        with (
+            patch("scripts.r2_guard_v2.shield_phase.phase_for_day", return_value=phase),
+            patch("scripts.r2_guard_v2.rotterdam.admissible_since", return_value=True) as admissible,
+        ):
+            self.assertTrue(
+                r2_guard.corsica_shield_price_admissible(
+                    declared, DAY, "Gazole", bouclier_metadata={"Gazole": {}}
+                )
+            )
+        self.assertEqual(admissible.call_args.args[0], phase.started_on)
 
 class TotalCorsicaShieldNo45DayCutoffTests(unittest.TestCase):
     def test_gazole_total_at_cap_survives_90_days_when_ufip_guard_is_admissible(self):
