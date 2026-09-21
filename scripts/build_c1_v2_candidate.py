@@ -248,10 +248,19 @@ def build_v2_daily(years: list[int], start: date, end: date) -> tuple[pd.DataFra
                 if region_kind == "corsica":
                     brand_checks[f"{fuel}/{brand_class}"] += 1
                 r2_verdict=None; age=reliability_policy_v2.age_days(last_ts,day)
-                if region_kind == "corsica" and age is not None and age >= reliability_policy_v2.NORMAL_MAX_AGE_DAYS and at_cap(gazole_price,gazole_cap) and at_cap(sp95_price,sp95_cap):
+                if (
+                    region_kind == "corsica"
+                    and is_total
+                    and age is not None
+                    and age >= reliability_policy_v2.NORMAL_MAX_AGE_DAYS
+                    and target_phase is not None
+                    and at_cap(last_price, target_phase.cap)
+                ):
                     r2["calls"] += 1
                     try:
-                        r2_verdict=r2_guard_v2.stale_price_admissible(last_ts,day,bouclier_metadata=bouclier)
+                        r2_verdict=r2_guard_v2.corsica_shield_price_admissible(
+                            last_ts, day, fuel, bouclier_metadata=bouclier
+                        )
                         r2["true" if r2_verdict else "false"] += 1
                     except Exception as exc:
                         r2["unavailable"] += 1; r2[f"error:{type(exc).__name__}"] += 1; r2_verdict=None

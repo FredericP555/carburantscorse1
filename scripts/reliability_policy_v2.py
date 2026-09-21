@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """A4C C1 V2 reliability policy.
 
-C1 treats every non-Corsica region uniformly. Corsica uses the same Total/shield
-exception as C2; Rotterdam R2 is only a stale-price admissibility guard and never
-defines whether the shield is effective.
+C1 treats every non-Corsica region uniformly. For TotalEnergies in Corsica, once a
+carburant-specific shield phase is effective and the last valid price is at that cap, the
+45-day rule is not an expiry rule. Beyond normal freshness, UFIP/R2 is the fail-closed
+continuation guard. The shield detector remains authoritative for phase effectiveness.
 """
 from __future__ import annotations
 
@@ -101,14 +102,11 @@ def evaluate(*, day: date, region_kind: str, target_fuel: str,
     if not at_cap(last_price, applicable_cap):
         return Decision(False, "ancien_pas_au_plafond", age)
 
-    both_capped = at_cap(gazole_price, gazole_cap) and at_cap(sp95_price, sp95_cap)
-    if both_capped:
-        if rotterdam_stale_price_admissible is True:
-            return Decision(True, "double_plafond_rotterdam_admissible", age)
-        if rotterdam_stale_price_admissible is False:
-            return Decision(False, "double_plafond_rotterdam_verrouille", age)
-        return Decision(False, "double_plafond_rotterdam_indisponible", age)
-
-    if recent_liveness(region_kind=region_kind, target_fuel=target_fuel, activity_by_fuel=activity_by_fuel, day=day):
-        return Decision(True, "bouclier_vivacite_45j_renouvelee", age)
-    return Decision(False, "bouclier_sans_vivacite_recente", age)
+    # Corsica / Total / active shield is evaluated per fuel. Once the ordinary 45-day
+    # freshness window is exceeded, age alone must not expire a price that is still exactly
+    # constrained by the active cap. UFIP/R2 is then the fail-closed continuation guard.
+    if rotterdam_stale_price_admissible is True:
+        return Decision(True, "bouclier_total_ufip_admissible", age)
+    if rotterdam_stale_price_admissible is False:
+        return Decision(False, "bouclier_total_ufip_verrouille", age)
+    return Decision(False, "bouclier_total_ufip_indisponible", age)

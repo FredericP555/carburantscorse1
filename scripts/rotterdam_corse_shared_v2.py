@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """Canonical prepared Corsica Rotterdam calibration produced upstream by C1.
 
-C1 owns the single UFIP download. R2 is an admissibility threshold for stale station prices in
-the double-cap case; it never defines whether the shield itself is effective. The upstream UFIP
-series is explicitly contracted as Rotterdam Gazole in EUR/L, Thomson-Reuters, 5-day moving
-average; those semantics are carried in the shared manifest consumed by C2.
+C1 owns the single UFIP download. For TotalEnergies Corsica, R2 is the fail-closed
+continuation threshold used per fuel once an at-cap price exceeds the normal 45-day freshness
+window; it never defines whether the shield itself is effective. The upstream UFIP series is
+explicitly contracted as Rotterdam Gazole in EUR/L, Thomson-Reuters, 5-day moving average;
+those semantics are carried in the shared manifest consumed by C2.
 """
 from __future__ import annotations
 
@@ -181,7 +182,7 @@ def shared_metadata(observed_file: str | Path = OBSERVED_FILE, daily_file: str |
             "r1_policy": "mean of the last 3 actually observed Rotterdam quotations before each effective-shield cap phase",
             "r2_formula": "R2 = k * phase_R1",
         },
-        "runtime_rule": "after normal 45-day expiry, any Rotterdam day below the R2 of the current effective-shield cap phase excludes the stale double-cap price until the target fuel is declared again; R2 does not define shield effectiveness",
+        "runtime_rule": "for TotalEnergies Corsica, after normal 45-day freshness the active-cap price is carried per fuel without an age cutoff only while every Rotterdam day since the later of the declaration or phase start stays at or above that phase's R2; a breach blocks continued carry until a later target-fuel declaration; R2 does not define shield effectiveness",
     }
 
 
