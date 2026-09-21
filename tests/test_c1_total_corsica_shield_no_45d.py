@@ -32,7 +32,7 @@ def decision(*, fuel="Gazole", age_days=90, is_total=True, shield=True, price=No
         is_total=is_total,
         shield_effective=shield,
         applicable_cap=cap,
-        phase_started_on=PHASE_START,
+        phase_started_on=phase_start,
         activity_by_fuel={},
         gazole_price=2.25,
         gazole_cap=2.25,
