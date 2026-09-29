@@ -2,10 +2,13 @@
 """Incrementally maintain the Corsica station-brand registry.
 
 The annual official price stock supplies the station IDs. New/unresolved IDs are always queried
-on the official station page. Resolved active IDs are also reverified on a bounded schedule so a
-stable station ID cannot keep a stale brand forever. Brand changes are temporal: the previous
-classification is closed the day before the new verification and remains available in
-``brand_history``. Published historical price series are never rewritten by this resolver.
+on the official station page. IDs inside the current registry carry window are also reverified
+on a bounded schedule so a stable station ID cannot keep a stale brand forever. The persisted
+``active`` field is a backward-compatible technical marker for membership in that registry
+window: it is not a physical open/closed status and it does not determine price eligibility.
+Brand changes are temporal: the previous classification is closed the day before the new
+verification and remains available in ``brand_history``. Published historical price series
+are never rewritten by this resolver.
 """
 from __future__ import annotations
 
@@ -302,7 +305,13 @@ def resolve_incremental(
         "source": {
             "station_ids": "official annual fuel-price stock already used by the A4C update",
             "enseigne": "official prix-carburants.gouv.fr station detail HTML",
-            "note": "New/unresolved/returning IDs are queried immediately; resolved active IDs are reverified oldest-first on a bounded 90-day policy. Brand changes are prospective and previous periods remain in brand_history.",
+            "note": "New/unresolved/returning IDs are queried immediately; IDs inside the current registry carry window are reverified oldest-first on a bounded 90-day policy. Brand changes are prospective and previous periods remain in brand_history.",
+        },
+        "activity_semantics": {
+            "active_field": "backward-compatible technical marker for membership in the current registry carry window",
+            "not_physical_station_status": True,
+            "not_price_eligibility": True,
+            "price_eligibility_note": "Price eligibility is evaluated separately per station/fuel/day; TotalEnergies Corsica prices at an active shield cap may remain eligible beyond ordinary freshness when the UFIP/R2 guard is admissible.",
         },
         "classification": {
             "segments": ["gms_lowcost", "traditionnel", "inconnu"],
@@ -313,6 +322,7 @@ def resolve_incremental(
             "temporal_policy": "a detected brand/classification change becomes valid on its verification date; earlier periods are preserved",
         },
         "current_station_count": len(current_ids),
+        "current_station_count_semantics": "IDs inside the current registry carry window; not a count of physically open stations and not the price-calculation perimeter",
         "verified_brand_count": sum(1 for entry in active_entries if entry.get("enseigne")),
         "fetch_error_count": len(errors),
         "unresolved_current_count": sum(1 for entry in active_entries if entry.get("segment") == "inconnu"),
