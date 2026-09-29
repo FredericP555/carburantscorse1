@@ -8,8 +8,10 @@ lacks and what A4C needs analytically:
     station_id -> official brand -> A4C segment/detail
 
 Current station IDs come from the Ministry instantaneous fuel-price dataset. The brand comes
-from the official prix-carburants.gouv.fr station page (``Marque : ...``). Historical station
-IDs already present in the registry are preserved so older series remain classifiable.
+from the official prix-carburants.gouv.fr station page (``Marque : ...``). The persisted
+``active`` field is a backward-compatible technical registry-presence marker: it is not a
+physical open/closed status and it does not determine price eligibility. Historical station IDs
+already present in the registry are preserved so older series remain classifiable.
 
 A4C segmentation is explicitly analytical, not an official legal/capital-ownership category:
 - gms_lowcost: GMS + discount formats of majors (Total Access, Esso Express)
@@ -381,12 +383,19 @@ def build_registry(output: Path, corrections: Path, *, delay: float = 0.05) -> d
             "enseigne": "official prix-carburants.gouv.fr station detail HTML",
             "note": "The price feed already owns address/commune/coordinates; this registry only adds brand and A4C classification.",
         },
+        "activity_semantics": {
+            "active_field": "backward-compatible technical marker for presence in the current registry source snapshot",
+            "not_physical_station_status": True,
+            "not_price_eligibility": True,
+            "price_eligibility_note": "Price eligibility is evaluated separately per station/fuel/day; this registry field must not be used as a direct inclusion/exclusion rule for published price means.",
+        },
         "classification": {
             "segments": ["gms_lowcost", "traditionnel", "inconnu"],
             "unknown_policy": "inconnu is excluded from network comparisons",
             "corrections_file": str(corrections.relative_to(ROOT)) if corrections.is_relative_to(ROOT) else str(corrections),
         },
         "current_station_count": len(current_ids),
+        "current_station_count_semantics": "IDs present in the current registry source snapshot; not a count of physically open stations and not the price-calculation perimeter",
         "verified_brand_count": verified_count,
         "fetch_error_count": len(errors),
         "unresolved_current_count": sum(
