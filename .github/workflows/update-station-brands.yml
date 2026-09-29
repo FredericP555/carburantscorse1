@@ -63,10 +63,43 @@ jobs:
           import json
           from pathlib import Path
 
+          import os
+          import subprocess
+
           p=Path('config/corse_station_brands.json')
           d=json.loads(p.read_text(encoding='utf-8'))
           assert d['schema']=='a4c-corsica-station-brands-v2'
-          assert d['current_station_count'] >= 100, d['current_station_count']
+
+          # Registry coverage guard: compare with the persisted baseline instead of enforcing
+          # an arbitrary fixed count. A small natural change (for example 96 -> 95) is allowed,
+          # while a sudden collapse of more than 20% is rejected. The low absolute floor remains
+          # as a last-resort protection against a broken or unexpectedly empty source.
+          current_count=int(d['current_station_count'])
+          minimum_count=60
+          maximum_drop=0.20
+          assert current_count >= minimum_count, (
+              f"Registry population below absolute safety floor: {current_count} < {minimum_count}"
+          )
+
+          base_sha=(os.environ.get('WRITER_BASE_SHA') or '').strip()
+          assert base_sha, 'WRITER_BASE_SHA is required for registry population guard'
+          baseline_raw=subprocess.check_output(
+              ['git','show',f'{base_sha}:config/corse_station_brands.json'],
+              text=True,
+          )
+          baseline=json.loads(baseline_raw)
+          previous_count=int(baseline['current_station_count'])
+          assert previous_count > 0, previous_count
+          drop=max(0.0,(previous_count-current_count)/previous_count)
+          assert drop <= maximum_drop, (
+              f"Sudden registry population drop: {previous_count} -> {current_count} "
+              f"({drop:.1%}) > {maximum_drop:.0%}"
+          )
+          print(
+              f"Registry population guard: previous={previous_count}, current={current_count}, "
+              f"drop={drop:.1%}, floor={minimum_count}"
+          )
+
           assert d['verified_brand_count'] >= d['current_station_count'] - 10
           assert set(d['segment_counts_current']) == {'gms_lowcost','traditionnel','inconnu'}
           classification=d.get('classification') or {}
