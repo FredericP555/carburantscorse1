@@ -4,7 +4,7 @@
   "source": {
     "station_ids": "official annual fuel-price stock already used by the A4C update",
     "enseigne": "official prix-carburants.gouv.fr station detail HTML",
-    "note": "New/unresolved/returning IDs are queried immediately; resolved active IDs are reverified oldest-first on a bounded 90-day policy. Brand changes are prospective and previous periods remain in brand_history."
+    "note": "New/unresolved/returning IDs are queried immediately; IDs inside the current registry carry window are reverified oldest-first on a bounded 90-day policy. Brand changes are prospective and previous periods remain in brand_history."
   },
   "classification": {
     "segments": [
@@ -1433,5 +1433,12 @@
       "last_seen": "2026-08-19",
       "verified_at": "2026-08-19T12:19:15.155041+00:00"
     }
-  }
+  },
+  "activity_semantics": {
+    "active_field": "backward-compatible technical marker for membership in the current registry carry window",
+    "not_physical_station_status": true,
+    "not_price_eligibility": true,
+    "price_eligibility_note": "Price eligibility is evaluated separately per station/fuel/day; TotalEnergies Corsica prices at an active shield cap may remain eligible beyond ordinary freshness when the UFIP/R2 guard is admissible."
+  },
+  "current_station_count_semantics": "IDs inside the current registry carry window; not a count of physically open stations and not the price-calculation perimeter"
 }
