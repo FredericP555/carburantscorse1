@@ -1,11 +1,6 @@
 name: Update fuel observatory weekly
 
 on:
-  schedule:
-    # GitHub cron is UTC. Two slots allow an exact 07:07 Europe/Paris schedule year-round;
-    # the first step keeps only the slot matching the current CET/CEST offset.
-    - cron: '7 5 * * 1'
-    - cron: '7 6 * * 1'
   workflow_dispatch:
 
 permissions:
