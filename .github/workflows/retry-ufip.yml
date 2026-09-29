@@ -1,20 +1,6 @@
 name: Retry UFIP after weekly update
 
 on:
-  schedule:
-    # Monday retries at 11:17, 14:17, 17:17 and 20:17 Europe/Paris.
-    # Two UTC slots per local time cover CET/CEST; the gate below keeps only one.
-    - cron: '17 9 * * 1'
-    - cron: '17 10 * * 1'
-    - cron: '17 12 * * 1'
-    - cron: '17 13 * * 1'
-    - cron: '17 15 * * 1'
-    - cron: '17 16 * * 1'
-    - cron: '17 18 * * 1'
-    - cron: '17 19 * * 1'
-    # Final safety check Tuesday at 07:17 Europe/Paris.
-    - cron: '17 5 * * 2'
-    - cron: '17 6 * * 2'
   push:
     branches:
       - main
