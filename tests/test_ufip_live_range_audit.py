@@ -32,6 +32,8 @@ class UfipLiveRangeAudit(unittest.TestCase):
                     f"{row.date.isoformat()}={float(row.rotterdam_eur_l):.3f}"
                 )
 
+        self.fail("AUDIT_COMPLETE_STOP: intentional temporary audit stop")
+
 
 if __name__ == "__main__":
     unittest.main()
