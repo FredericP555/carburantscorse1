@@ -52,50 +52,94 @@ applyDynamicLabels=function(){
 
 editorialEnsureStyles();
 
+function editorialHistoricRows(d, e){
+  if(Array.isArray(e?.historical_annual) && e.historical_annual.length){
+    return e.historical_annual.filter(v=>v.outside_total_action_gap!=null && Number.isFinite(Number(v.outside_total_action_gap)));
+  }
+  // Fallback during transition, until C1's next metadata publication.
+  return [2022,2023,2024,2025].map(year=>({
+    year,
+    outside_total_action_gap:Number(String(d.tendance['y'+year]).replace(',','.')),
+    observed_gap:year===2022?Number(String(d.effet.avec2022).replace(',','.')):null,
+    outside_total_action_days:null,
+  }));
+}
+
+function editorialHistoryText(d, e, fuel){
+  const history=editorialHistoricRows(d,e);
+  // At least 180 unprotected observations for post-2025 structural comparisons.
+  // The 2022-2025 reference is validated independently by the historic regression test.
+  const comparable=history.filter(v=>v.year<=2025 || v.outside_total_action_days>=180);
+  const exceptional=history.filter(v=>v.year>2025 && v.outside_total_action_days<180);
+  if(comparable.length<2) return 'L’historique disponible ne permet pas encore de comparer plusieurs années complètes hors intervention TotalEnergies.';
+  const first=comparable[0], last=comparable[comparable.length-1];
+  const detail=comparable.map(v=>`<strong>${autoNumberFr(v.outside_total_action_gap,1,true)} c€/L en ${v.year}</strong>`).join(', ');
+  const delta=Math.round((last.outside_total_action_gap-first.outside_total_action_gap)*10)/10;
+  const evolution=delta>0
+    ? `Entre ${first.year} et ${last.year}, <strong>cet écart s'est aggravé de ${autoNumberFr(delta,1)} c€/L</strong>.`
+    : delta<0
+      ? `Entre ${first.year} et ${last.year}, l'écart s'est réduit de <strong>${autoNumberFr(-delta,1)} c€/L</strong>.`
+      : `Entre ${first.year} et ${last.year}, l'écart est demeuré pratiquement stable.`;
+  const exceptionalText=exceptional.slice(-2).map(v=>
+    `En ${v.year}, l'écart hors action ressort à <strong>${autoNumberFr(v.outside_total_action_gap,1,true)} c€/L</strong>, mais sur seulement ${v.outside_total_action_days} journées : il n'est pas directement comparable aux années disposant d'une couverture plus large.`
+  ).join(' ');
+  return `Sur les journées sans action tarifaire de TotalEnergies, l'écart moyen HT du ${fuel} entre la Corse et le continent s'établit successivement à ${detail}. ${evolution} L'aggravation constatée entre 2022 et 2025 ne peut être expliquée par la seule insularité : il faut chiffrer l'évolution des coûts de transport, de stockage, de distribution et des marges pour comprendre celle de cet écart. ${exceptionalText}`;
+}
+
+function editorialWeeklyText(e){
+  const w=e?.weekly_change;
+  if(!w || !Number.isFinite(Number(w.latest_gap)) || !Number.isFinite(Number(w.previous_gap))) return '';
+  const value=Number(w.change);
+  const movement=value>0
+    ? `une hausse de <strong>${autoNumberFr(value,1)} c€/L</strong>`
+    : value<0
+      ? `une baisse de <strong>${autoNumberFr(-value,1)} c€/L</strong>`
+      : 'un écart pratiquement inchangé';
+  return `Sur la dernière semaine complète (du ${autoDateFr(w.latest_start)} au ${autoDateFr(w.latest_end)}), l'écart moyen HT observé est de <strong>${autoNumberFr(w.latest_gap,1,true)} c€/L</strong>, contre <strong>${autoNumberFr(w.previous_gap,1,true)} c€/L</strong> la semaine précédente : ${movement}. Cette variation hebdomadaire ne suffit pas, à elle seule, à établir une nouvelle tendance de fond.`;
+}
+
 buildAnalyse=function(){
   const el=document.getElementById('analyse-content'); if(!el) return;
   const d=ANALYSE[carbu]; if(!d) return;
   const e=DATA?.meta?.editorial?.[carbu];
-  const b=DATA?.meta?.bouclier?.[carbu];
   const c=carbu.toLowerCase();
-  const source='Source : moyenne journalière HT, données data.gouv.fr · carburantscorse.fr';
+  const source='Source : moyennes journalières HT, données publiques prix-carburants.gouv.fr · calculs A4C.';
   const block=(titre,texte,note='')=>`
     <div class="analyse-titre">${titre}</div>
     <p class="analyse-texte">${texte}</p>
     ${note?`<p class="analyse-note">${note}</p>`:''}`;
 
-  // Pas de source ici : elle est volontairement placée tout à la fin de la partie 2,
-  // afin que le titre « 2 » remonte dans la colonne de gauche et que la source ferme le bloc.
-  const historique=block('1 — UN ÉCART QUI SE CREUSE, HORS TOUTE ACTION TOTALENERGIES',
-    `Sur les jours hors toute action TotalEnergies, l'écart moyen HT du ${c} entre la Corse et le continent passe de <strong>+${d.tendance.y2022} c€/L en 2022</strong> à <strong>+${d.tendance.y2023} c€/L en 2023</strong>, <strong>+${d.tendance.y2024} c€/L en 2024</strong> puis <strong>+${d.tendance.y2025} c€/L en 2025</strong> — soit <strong>${d.tendance.delta} c€/L de plus en trois ans</strong>. Cette progression ne peut pas s'expliquer par un seul surcoût d'insularité supposé stable : la Corse ne devient pas davantage une île d'une année sur l'autre.`);
+  const historique=block('1 — UN ÉCART QUI S’EST CREUSÉ AU FIL DES ANNÉES',
+    editorialHistoryText(d,e,c));
 
   if(!e){
-    const courant=block('2 — EFFETS DES ACTIONS TOTALENERGIES',
-      `Les remises carburant (sept.–déc. 2022, −20 c/L puis −10 c/L) et les périodes d'activation du bouclier tarifaire ont atténué l'écart. En 2022, grâce aux remises, l'écart annuel moyen ${c} est tombé à <strong>+${d.effet.avec2022} c€/L</strong> au lieu de +${d.effet.sans2022} c€/L hors toute action TotalEnergies — un gain de <strong>${d.effet.gain2022} c€/L</strong>.`,
-      `Données courantes non encore disponibles.<br><br>${source}`);
+    const courant=block('2 — LE BOUCLIER TOTALENERGIES ATTÉNUE L’ÉCART OBSERVÉ, SANS EN EFFACER LES CAUSES',
+      `Les remises carburant de 2022 ont coïncidé avec un écart moyen annuel de <strong>${d.effet.avec2022} c€/L</strong>, contre <strong>${d.effet.sans2022} c€/L</strong> sur les seules journées hors action TotalEnergies. Les données de l'année en cours ne sont pas disponibles.`,
+      source);
     el.innerHTML=`<div class="analyse-flow">${historique}${courant}</div>`;
     return;
   }
 
   const through=autoDateFr(e.through);
-  const p75=b?.latest_non_total_p75;
   const outsideGap=e.outside_total_action_gap ?? e.outside_effective_gap;
   const duringGap=e.during_total_action_gap ?? e.during_effective_gap;
-  const priorRanges=editorialEarlierIranWarRanges(b,e.current_active_since);
-  const priorStatus=priorRanges.length
-    ? `Après le début de la guerre en Iran, le bouclier avait déjà été détecté comme contraignant ${editorialJoinRanges(priorRanges)}. `
-    : '';
-  const currentStatus=e.current_active
-    ? `${priorStatus}Il est <strong>actuellement détecté comme contraignant depuis le ${autoDateFr(e.current_active_since)}</strong> : au dernier relevé, <strong>${Math.round(((b?.latest_at_cap_share ?? e.latest_near_share ?? 0))*100)} %</strong> des <strong>${e.latest_total_stations}</strong> stations TotalEnergies suivies se situent dans la bande de détection du plafond (<strong>de 0,2 c/L sous à 0,1 c/L au-dessus</strong>) autour de <strong>${autoNumberFr(e.current_cap,2)} €/L</strong>${p75!=null?`, tandis que le 75e percentile des stations corses non‑Total atteint <strong>${autoNumberFr(p75,3)} €/L</strong>`:''}.`
-    : `${priorStatus}Au ${through}, le plafond TotalEnergies est en vigueur mais <strong>n'est pas détecté comme économiquement contraignant</strong> par la combinaison « prix Total au plafond + pression du reste du marché corse ».`;
-
-  const splitText=outsideGap!=null
-    ? `Hors toute période d'action TotalEnergies — c'est-à-dire les jours où aucune action n'est active ni sur le gazole ni sur le SP95 — l'écart moyen atteint <strong>${autoNumberFr(outsideGap,1,true)} c€/L</strong>${duringGap!=null?`; pendant les périodes d'action TotalEnergies, il est de <strong>${autoNumberFr(duringGap,1,true)} c€/L</strong>`:''}.`
-    : '';
-
-  const courant=block('2 — EFFETS DES ACTIONS TOTALENERGIES',
-    `Les remises carburant (sept.–déc. 2022, −20 c/L puis −10 c/L) ont nettement réduit l'écart : en 2022, l'écart annuel moyen ${c} est tombé à <strong>+${d.effet.avec2022} c€/L</strong> au lieu de +${d.effet.sans2022} c€/L hors toute action TotalEnergies. En ${e.year}, jusqu'au ${through}, l'écart moyen observé s'établit à <strong>${autoNumberFr(e.observed_ytd_gap,1,true)} c€/L</strong>. ${splitText} ${currentStatus}`,
-    `« Hors toute action TotalEnergies » : moyenne des écarts journaliers HT des jours où aucune intervention Total n’est active sur aucun des deux carburants. Le bouclier prospectif reste détecté selon la règle économique documentée ; les anciennes zones sont figées.<br><br>${source}`);
+  const ref2022=editorialHistoricRows(d,e).find(v=>v.year===2022);
+  const refOutside=ref2022?.outside_total_action_gap ?? Number(String(d.effet.sans2022).replace(',','.'));
+  const refObserved=ref2022?.observed_gap ?? Number(String(d.effet.avec2022).replace(',','.'));
+  const remises=`En 2022, année des remises carburant de 20 puis 10 c€/L, l'écart moyen annuel observé était de <strong>${autoNumberFr(refObserved,1,true)} c€/L</strong>, contre <strong>${autoNumberFr(refOutside,1,true)} c€/L</strong> sur les seules journées hors action TotalEnergies.`;
+  const splitText=outsideGap!=null && duringGap!=null
+    ? `Sur les journées sans action TotalEnergies, l'écart moyen atteint <strong>${autoNumberFr(outsideGap,1,true)} c€/L</strong>, contre <strong>${autoNumberFr(duringGap,1,true)} c€/L</strong> pendant les périodes d'action. Ces deux moyennes portent sur des journées différentes : leur écart ne constitue pas une mesure directe de l'effet du bouclier.`
+    : outsideGap!=null
+      ? `Sur les journées sans action TotalEnergies, l'écart moyen atteint <strong>${autoNumberFr(outsideGap,1,true)} c€/L</strong>.`
+      : duringGap!=null
+        ? `Toutes les journées observées de l'année relèvent d'une période d'action TotalEnergies.`
+        : '';
+  const status=e.current_active && e.current_active_since
+    ? `Le bouclier ${carbu==='SP95'?'sur le SP95':'sur le gazole'} est actuellement <strong>détecté comme économiquement contraignant depuis le ${autoDateFr(e.current_active_since)}</strong>.`
+    : `Au ${through}, le bouclier ${carbu==='SP95'?'sur le SP95':'sur le gazole'} n'est pas détecté comme économiquement contraignant.`;
+  const courant=block('2 — LE BOUCLIER TOTALENERGIES ATTÉNUE L’ÉCART OBSERVÉ, SANS EN EFFACER LES CAUSES',
+    `${remises} En ${e.year}, jusqu'au ${through}, l'écart moyen HT observé s'établit à <strong>${autoNumberFr(e.observed_ytd_gap,1,true)} c€/L</strong>. ${splitText} ${editorialWeeklyText(e)} ${status} <strong>Une atténuation conjoncturelle de l'écart sous l'effet d'une intervention commerciale ne démontre pas que les mécanismes à l'origine de son aggravation ont disparu.</strong>`,
+    `« Hors toute action TotalEnergies » : jours sans intervention active sur le gazole ni sur le SP95. Continent : moyenne à poids égal des douze régions métropolitaines ; stations autoroutières exclues. ${source}`);
 
   el.innerHTML=`<div class="analyse-flow">${historique}${courant}</div>`;
 };

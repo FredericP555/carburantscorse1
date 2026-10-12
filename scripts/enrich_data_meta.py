@@ -55,7 +55,78 @@ def inside(d,ranges):
     return any(a<=d<=b for a,b in ranges)
 
 
-def editorial_for(data:dict, short:str, fuel_name:str, fuel_bmeta:dict, year:int, action_ranges):
+# Use the verified historical TotalEnergies action calendar until 2025;
+# completed years from 2026 use the effective bouclier calendar.
+REMISES_2022 = [(date(2022, 9, 1), date(2022, 12, 31))]
+
+
+def editorial_calendar_for_year(bmeta: dict, year: int):
+    if year >= bd.DYNAMIC_START_YEAR:
+        return total_action_ranges(bmeta, year)
+    ranges = list(REMISES_2022)
+    for fuel in ('Gazole', 'SP95'):
+        ranges.extend(bd.LEGACY_RANGES[fuel])
+    start, end = date(year, 1, 1), date(year, 12, 31)
+    return [(max(a, start), min(b, end))
+            for a, b in merge_ranges(ranges) if a <= end and b >= start]
+
+
+def paired_daily_gaps(data: dict, short: str):
+    corse = {p[0]: p[2] for p in data[short]['corse']['d']}
+    mainland = {p[0]: p[2] for p in data[short]['moy_regions']['d']}
+    return sorted(
+        (ORIGIN + timedelta(days=off), (ht - mainland[off]) * 100)
+        for off, ht in corse.items()
+        if ht is not None and mainland.get(off) is not None
+    )
+
+
+def completed_annual_gaps(data: dict, short: str, year: int, bmeta: dict):
+    rows = paired_daily_gaps(data, short)
+    results = []
+    for completed_year in range(ORIGIN.year, year):
+        yearly = [(day, gap) for day, gap in rows if day.year == completed_year]
+        if not yearly:
+            continue
+        calendar = editorial_calendar_for_year(bmeta, completed_year)
+        outside = [gap for day, gap in yearly if not inside(day, calendar)]
+        observed = [gap for _, gap in yearly]
+        results.append({
+            'year': completed_year,
+            'observed_gap': round(statistics.fmean(observed), 1),
+            'outside_total_action_gap': round(statistics.fmean(outside), 1) if outside else None,
+            'outside_total_action_days': len(outside),
+            'observed_days': len(observed),
+        })
+    return results
+
+
+def completed_week_comparison(data: dict, short: str, last_day: date):
+    """Compare only two complete Monday-Sunday weeks of paired daily HT gaps."""
+    last_sunday = last_day - timedelta(days=(last_day.weekday() + 1) % 7)
+    latest_start = last_sunday - timedelta(days=6)
+    previous_start = latest_start - timedelta(days=7)
+    by_day = dict(paired_daily_gaps(data, short))
+
+    def whole_week(start):
+        dates = [start + timedelta(days=i) for i in range(7)]
+        return [by_day[d] for d in dates] if all(d in by_day for d in dates) else None
+
+    latest, previous = whole_week(latest_start), whole_week(previous_start)
+    if latest is None or previous is None:
+        return None
+    latest_gap = round(statistics.fmean(latest), 1)
+    previous_gap = round(statistics.fmean(previous), 1)
+    return {
+        'latest_start': str(latest_start),
+        'latest_end': str(last_sunday),
+        'latest_gap': latest_gap,
+        'previous_gap': previous_gap,
+        'change': round(latest_gap - previous_gap, 1),
+    }
+
+
+def editorial_for(data:dict, short:str, fuel_name:str, fuel_bmeta:dict, year:int, action_ranges, bmeta:dict):
     corse={p[0]:p[2] for p in data[short]['corse']['d']}
     mainland={p[0]:p[2] for p in data[short]['moy_regions']['d']}
     rows=[]
@@ -86,6 +157,8 @@ def editorial_for(data:dict, short:str, fuel_name:str, fuel_bmeta:dict, year:int
         'total_action_days':len(during),
         'outside_total_action_days':len(outside),
         'total_action_ranges_used':[{'d1':str(a),'d2':str(b)} for a,b in action_ranges],
+        'historical_annual':completed_annual_gaps(data, short, year, bmeta),
+        'weekly_change':completed_week_comparison(data, short, rows[-1][0]),
         # Fuel-specific current status remains useful for the graph/legend.
         'current_active':fuel_bmeta['current_active'],
         'current_active_since':fuel_bmeta['current_active_since'],
@@ -117,8 +190,8 @@ def main():
         'editorial_action_rule':'union-of-gazole-and-sp95-total-intervention-periods',
         'bouclier':bmeta,
         'editorial':{
-            'Gazole':editorial_for(data,'G','Gazole',bmeta['Gazole'],year,action_ranges),
-            'SP95':editorial_for(data,'S','SP95',bmeta['SP95'],year,action_ranges),
+            'Gazole':editorial_for(data,'G','Gazole',bmeta['Gazole'],year,action_ranges,bmeta),
+            'SP95':editorial_for(data,'S','SP95',bmeta['SP95'],year,action_ranges,bmeta),
         },
     }
     if existing_station_audit is not None:

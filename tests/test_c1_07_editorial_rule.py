@@ -11,11 +11,15 @@ class C107EditorialRuleTests(unittest.TestCase):
         text = PATCH.read_text(encoding="utf-8")
         self.assertNotIn("à moins de 1,5", text)
 
-    def test_editorial_wording_matches_detector_band(self):
+    def test_detector_rules_stay_technical_not_public_editorial(self):
         text = PATCH.read_text(encoding="utf-8")
-        self.assertIn("de 0,2 c/L sous à 0,1 c/L au-dessus", text)
-        self.assertIn("latest_at_cap_share", text)
-        self.assertIn("75e percentile des stations corses non‑Total", text)
+        detector = (ROOT / "scripts" / "bouclier_detector.py").read_text(encoding="utf-8")
+        self.assertIn("current_active", text)
+        self.assertNotIn("latest_at_cap_share", text)
+        self.assertNotIn("latest_total_stations", text)
+        self.assertNotIn("75e percentile des stations corses non", text)
+        self.assertIn("CAP_BELOW_TOLERANCE_EUR = 0.002", detector)
+        self.assertIn("CAP_ABOVE_TOLERANCE_EUR = 0.001", detector)
 
 
 if __name__ == "__main__":
