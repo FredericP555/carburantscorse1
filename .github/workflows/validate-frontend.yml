@@ -118,9 +118,9 @@ jobs:
           grep -q 'Bouclier' /tmp/desktop.html
           python - <<'PY'
           s=open('/tmp/desktop.html',encoding='utf-8').read()
-          assert '2 — EFFETS DES ACTIONS TOTALENERGIES' in s
-          assert 'moyenne journalière HT' in s
-          assert s.index('2 — EFFETS DES ACTIONS TOTALENERGIES') < s.index('moyenne journalière HT')
+          assert '2 — LE BOUCLIER TOTALENERGIES ATTÉNUE L’ÉCART OBSERVÉ, SANS EN EFFACER LES CAUSES' in s
+          assert 'Source : moyennes journalières HT' in s
+          assert s.index('2 — LE BOUCLIER TOTALENERGIES') < s.index('Source : moyennes journalières HT')
           print('Editorial source follows section 2: OK')
           PY
           echo "Wide desktop integration and editorial flow: OK"
