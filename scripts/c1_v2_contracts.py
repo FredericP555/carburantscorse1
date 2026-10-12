@@ -334,10 +334,10 @@ def refresh_publication_metadata(candidate: dict, baseline: dict, summary: dict)
     meta["editorial_action_rule"] = "union-of-gazole-and-sp95-total-intervention-periods"
     meta["editorial"] = {
         "Gazole": enrich_data_meta.editorial_for(
-            out, "G", "Gazole", bmeta["Gazole"], year, action_ranges
+            out, "G", "Gazole", bmeta["Gazole"], year, action_ranges, bmeta
         ),
         "SP95": enrich_data_meta.editorial_for(
-            out, "S", "SP95", bmeta["SP95"], year, action_ranges
+            out, "S", "SP95", bmeta["SP95"], year, action_ranges, bmeta
         ),
     }
 
