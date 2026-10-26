@@ -1,6 +1,6 @@
 {
   "schema": "a4c-corsica-station-brands-v2",
-  "generated_at": "2026-10-12T05:08:06.526130+00:00",
+  "generated_at": "2026-10-26T06:08:33.151968+00:00",
   "source": {
     "station_ids": "official annual fuel-price stock already used by the A4C update",
     "enseigne": "official prix-carburants.gouv.fr station detail HTML",
@@ -18,18 +18,18 @@
     "brand_reverify_limit_per_run": 12,
     "temporal_policy": "a detected brand/classification change becomes valid on its verification date; earlier periods are preserved"
   },
-  "current_station_count": 94,
-  "verified_brand_count": 94,
+  "current_station_count": 90,
+  "verified_brand_count": 90,
   "fetch_error_count": 0,
   "unresolved_current_count": 0,
   "segment_counts_current": {
     "gms_lowcost": 0,
     "inconnu": 0,
-    "traditionnel": 94
+    "traditionnel": 90
   },
   "detail_counts_current": {
-    "major_tradi": 32,
-    "marque_tradi": 62
+    "major_tradi": 29,
+    "marque_tradi": 61
   },
   "stations": {
     "20000002": {
@@ -60,7 +60,7 @@
       "detail": "major_tradi",
       "classification_source": "auto",
       "brand_source": "officiel",
-      "active": true,
+      "active": false,
       "first_seen": "2026-08-19",
       "last_seen": "2026-08-19",
       "verified_at": "2026-08-19T12:19:15.155041+00:00"
@@ -326,7 +326,7 @@
       "detail": "major_tradi",
       "classification_source": "auto",
       "brand_source": "officiel",
-      "active": true,
+      "active": false,
       "first_seen": "2026-08-19",
       "last_seen": "2026-08-19",
       "verified_at": "2026-08-19T12:19:15.155041+00:00"
@@ -526,10 +526,12 @@
       "detail": "major_tradi",
       "classification_source": "auto",
       "brand_source": "officiel",
-      "active": false,
+      "active": true,
       "first_seen": "2026-08-19",
-      "last_seen": "2026-08-19",
-      "verified_at": "2026-08-19T12:19:15.155041+00:00"
+      "last_seen": "2026-10-26",
+      "verified_at": "2026-10-26T06:08:33.151968+00:00",
+      "brand_valid_from": "2026-08-19",
+      "brand_history": []
     },
     "20167003": {
       "enseigne": "VITO",
@@ -647,7 +649,7 @@
       "detail": "major_tradi",
       "classification_source": "auto",
       "brand_source": "officiel",
-      "active": true,
+      "active": false,
       "first_seen": "2026-08-19",
       "last_seen": "2026-08-19",
       "verified_at": "2026-08-19T12:19:15.155041+00:00"
@@ -770,7 +772,7 @@
       "detail": "major_tradi",
       "classification_source": "auto",
       "brand_source": "officiel",
-      "active": true,
+      "active": false,
       "first_seen": "2026-09-07",
       "last_seen": "2026-09-07",
       "verified_at": "2026-09-07T07:57:01.564006+00:00"
@@ -1080,7 +1082,7 @@
       "detail": "marque_tradi",
       "classification_source": "auto",
       "brand_source": "officiel",
-      "active": true,
+      "active": false,
       "first_seen": "2026-08-19",
       "last_seen": "2026-08-19",
       "verified_at": "2026-08-19T12:19:15.155041+00:00"
