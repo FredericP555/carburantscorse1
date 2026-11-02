@@ -1,6 +1,6 @@
 {
   "schema": "a4c-corsica-station-brands-v2",
-  "generated_at": "2026-11-01T11:53:46.387037+00:00",
+  "generated_at": "2026-11-02T06:08:12.932671+00:00",
   "source": {
     "station_ids": "official annual fuel-price stock already used by the A4C update",
     "enseigne": "official prix-carburants.gouv.fr station detail HTML",
@@ -18,17 +18,17 @@
     "brand_reverify_limit_per_run": 12,
     "temporal_policy": "a detected brand/classification change becomes valid on its verification date; earlier periods are preserved"
   },
-  "current_station_count": 87,
-  "verified_brand_count": 87,
-  "fetch_error_count": 1,
+  "current_station_count": 86,
+  "verified_brand_count": 86,
+  "fetch_error_count": 0,
   "unresolved_current_count": 0,
   "segment_counts_current": {
     "gms_lowcost": 0,
     "inconnu": 0,
-    "traditionnel": 87
+    "traditionnel": 86
   },
   "detail_counts_current": {
-    "major_tradi": 27,
+    "major_tradi": 26,
     "marque_tradi": 60
   },
   "stations": {
@@ -49,7 +49,7 @@
       "detail": "major_tradi",
       "classification_source": "auto",
       "brand_source": "officiel",
-      "active": true,
+      "active": false,
       "first_seen": "2026-08-19",
       "last_seen": "2026-08-19",
       "verified_at": "2026-08-19T12:19:15.155041+00:00"
