@@ -2,7 +2,7 @@
 """A4C C1 V2 reliability policy.
 
 C1 treats every non-Corsica region uniformly. For TotalEnergies in Corsica, once a
-carburant-specific shield phase is effective and the last valid price is at that cap, the
+carburant-specific shield phase is effective and the last valid price is at or below that cap, the
 45-day rule is not an expiry rule. Beyond normal freshness, UFIP/R2 is the fail-closed
 continuation guard. The shield detector remains authoritative for phase effectiveness.
 """
@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from datetime import date, datetime
 from typing import Mapping
 
-from a4c_common.price_math import at_cap, finite_number
+from a4c_common.price_math import at_or_below_cap, finite_number
 
 NORMAL_MAX_AGE_DAYS = 45
 MAINLAND_ABSOLUTE_MAX_AGE_DAYS = 90
@@ -99,12 +99,12 @@ def evaluate(*, day: date, region_kind: str, target_fuel: str,
         return Decision(False, "phase_plafond_absente_ou_invalide", age)
     if not declaration_eligible_for_phase(last_declared_at, phase_started_on):
         return Decision(False, "pas_de_resurrection_a_entree_plafond", age)
-    if not at_cap(last_price, applicable_cap):
-        return Decision(False, "ancien_pas_au_plafond", age)
+    if not at_or_below_cap(last_price, applicable_cap):
+        return Decision(False, "ancien_au_dessus_du_plafond", age)
 
     # Corsica / Total / active shield is evaluated per fuel. Once the ordinary 45-day
-    # freshness window is exceeded, age alone must not expire a price that is still exactly
-    # constrained by the active cap. UFIP/R2 is then the fail-closed continuation guard.
+    # freshness window is exceeded, age alone must not expire a price that is at or below
+    # the active cap. UFIP/R2 is then the fail-closed continuation guard.
     if rotterdam_stale_price_admissible is True:
         return Decision(True, "bouclier_total_ufip_admissible", age)
     if rotterdam_stale_price_admissible is False:
