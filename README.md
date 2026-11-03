@@ -155,3 +155,7 @@ S'il n'y a aucun nouveau jour officiel, le prix peut rester un **no-op** ; une n
 ## Crédits
 
 Calculs et analyse : [carburantscorse.fr](https://carburantscorse.fr) · Initiative A4C.
+
+### Prix Total sous plafond
+
+Pour les prochains calculs, l’exception de fraîcheur Total accepte un prix au plafond ou inférieur au plafond, avec la tolérance supérieure existante de 0,001 €/L. Les contrôles de phase effective, de rupture/fermeture, de validité et UFIP/R2 restent applicables, ainsi que les conditions d’activité propres au territoire. La détection du bouclier continue à rechercher des prix effectivement au plafond. Cette évolution ne réécrit pas les journées déjà publiées. Un prix reconduit reste une hypothèse méthodologique, pas une nouvelle déclaration de la station.

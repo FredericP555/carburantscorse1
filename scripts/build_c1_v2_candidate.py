@@ -28,7 +28,7 @@ import zipfile
 import pandas as pd
 
 from a4c_common.corse_brand import NON_TOTAL_CONFIRMED, TOTAL, UNKNOWN, classify_registry_entry
-from a4c_common.price_math import at_cap
+from a4c_common.price_math import at_or_below_cap
 import bouclier_detector
 import c1_bouclier_meta
 import c1_last_date
@@ -254,7 +254,7 @@ def build_v2_daily(years: list[int], start: date, end: date) -> tuple[pd.DataFra
                     and age is not None
                     and age >= reliability_policy_v2.NORMAL_MAX_AGE_DAYS
                     and target_phase is not None
-                    and at_cap(last_price, target_phase.cap)
+                    and at_or_below_cap(last_price, target_phase.cap)
                 ):
                     r2["calls"] += 1
                     try:
