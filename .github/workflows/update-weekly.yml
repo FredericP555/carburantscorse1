@@ -267,6 +267,8 @@ jobs:
           path: |
             outputs/c1-v2-candidate.json
             outputs/c1-v2-summary.json
+            outputs/c1-exclusions.csv.gz
+            outputs/c1-exclusions.json
             outputs/shared/official_13_20.meta.json
             config/corse_station_brands.json
           retention-days: 90
