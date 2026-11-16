@@ -319,15 +319,25 @@ buildAnalyse=function(){
   el.innerHTML=historique+courant;
 };
 
+function autoBouclierInactiveSince(b,through){
+  if(b?.current_active!==false||!Array.isArray(b.ranges)||!b.ranges.length)return null;
+  const end=b.ranges[b.ranges.length-1].d2;
+  const ms=Date.parse(end+'T00:00:00Z');
+  if(!Number.isFinite(ms))return null;
+  const next=new Date(ms+DAY_MS).toISOString().slice(0,10);
+  return !through||next<=through?next:null;
+}
+
 updateBouclierInfo=function(){
   const bi=document.getElementById('bouclier-info'); if(!bi) return;
   const lp=document.getElementById('legende-promo');
   const b=DATA?.meta?.bouclier?.[carbu];
   if(!b) return;
+  const inactiveSince=autoBouclierInactiveSince(b,DATA?.meta?.editorial?.[carbu]?.through);
   const statut=b.current_active
-    ? `<strong>contraignant depuis le ${autoDateFr(b.current_active_since)}</strong>`
-    : '<strong>actuellement non contraignant</strong>';
-  bi.innerHTML=`■ Plafond TotalEnergies suivi : <b>${autoNumberFr(b.current_cap,2)} €/L TTC</b> · Bouclier ${statut}`+
+    ? `<strong>Bouclier TotalEnergies actif depuis le ${autoDateFr(b.current_active_since)}</strong>`
+    : `<strong>Bouclier TotalEnergies inactif${inactiveSince?' depuis le '+autoDateFr(inactiveSince):''}</strong>`;
+  bi.innerHTML=`■ Plafond TotalEnergies suivi : <b>${autoNumberFr(b.current_cap,2)} €/L TTC</b> · ${statut}`+
     (carbu==='Gazole'?' <span style="color:rgba(234,88,12,0.8)">· Promotions 2,09 €/L observées par épisodes en mai 2026</span>':'');
   if(lp){
     lp.style.display=carbu==='Gazole'?'flex':'none';
