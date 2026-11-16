@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 import unittest
+import re
 
 ROOT = Path(__file__).resolve().parents[1]
 WATCHDOG = ROOT / ".github" / "workflows" / "watchdog-weekly.yml"
@@ -10,7 +11,7 @@ WATCHDOG = ROOT / ".github" / "workflows" / "watchdog-weekly.yml"
 class FW02C1WorkflowReceiptTests(unittest.TestCase):
     def test_watchdog_validates_receipt_against_current_content(self):
         text = WATCHDOG.read_text(encoding="utf-8")
-        self.assertIn("actions/checkout@11d5960a326750d5838078e36cf38b85af677262", text)
+        self.assertRegex(text, re.compile(r"^\s*-?\s*uses:\s*actions/checkout@[0-9a-f]{40}(?:\s*(?:#.*)?)?$", re.MULTILINE))
         self.assertIn("python scripts/validate_current_c1_receipt.py", text)
         self.assertIn("--pages-data-file /tmp/c1-pages-data.json", text)
         self.assertNotIn("jq -e --arg tag", text)

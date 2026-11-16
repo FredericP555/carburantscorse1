@@ -29,6 +29,8 @@ import pandas as pd
 
 from a4c_common.corse_brand import NON_TOTAL_CONFIRMED, TOTAL, UNKNOWN, classify_registry_entry
 from a4c_common.price_math import at_or_below_cap
+from a4c_common.corse_brand import registry_entry_for_date
+from a4c_common.exclusion_evidence import decision_row, write_evidence
 import bouclier_detector
 import c1_bouclier_meta
 import c1_last_date
@@ -198,7 +200,7 @@ def _value_at(updates: list[tuple[datetime, float | None]], pointers: dict, key,
     return last_ts, last_value
 
 
-def build_v2_daily(years: list[int], start: date, end: date) -> tuple[pd.DataFrame, dict]:
+def build_v2_daily(years: list[int], start: date, end: date, *, decision_rows: list | None = None) -> tuple[pd.DataFrame, dict]:
     declarations: dict = {}
     events: list[tuple] = []
     source_dates: list[date] = []
@@ -266,6 +268,9 @@ def build_v2_daily(years: list[int], start: date, end: date) -> tuple[pd.DataFra
                         r2["unavailable"] += 1; r2[f"error:{type(exc).__name__}"] += 1; r2_verdict=None
                 decision=reliability_policy_v2.evaluate(day=day,region_kind=region_kind,target_fuel=fuel,last_declared_at=last_ts,last_price=last_price,latest_price_valid=last_price is not None,target_rupture_active=guard.rupture_active(sid,fuel,day),independently_inactive=guard.closed(sid,day),is_total=is_total,shield_effective=target_phase is not None,applicable_cap=target_phase.cap if target_phase else None,phase_started_on=target_phase.started_on if target_phase else None,activity_by_fuel=activity,gazole_price=gazole_price,gazole_cap=gazole_cap,sp95_price=sp95_price,sp95_cap=sp95_cap,rotterdam_stale_price_admissible=r2_verdict)
                 reasons[f"{region_kind}/{fuel}/{decision.reason}"] += 1
+                if decision_rows is not None and region_kind == "corsica" and day >= end - timedelta(days=7) and last_ts is not None:
+                    identity = registry_entry_for_date(brand_entry, day) or {}
+                    decision_rows.append(decision_row(day, "Corse", sid, fuel, identity.get("enseigne"), "network", last_ts, last_price, decision, age))
                 if decision.eligible:
                     sums[(fuel, region, day)] += float(last_price); counts[(fuel, region, day)] += 1
                     if region_kind == "corsica":
@@ -367,7 +372,8 @@ def _merge_daily(old: list[list], generated: list[list], *, initial: bool) -> tu
 
 def main() -> None:
     args=parse_args(); baseline=json.loads((ROOT/args.input).read_text(encoding="utf-8")); target=date.fromisoformat(args.end) if args.end else date.today()-timedelta(days=1); years=[target.year-1,target.year]
-    df,audit=build_v2_daily(years,SWITCH_DAY,target); target=date.fromisoformat(audit["evaluated_end"]); initial=not bool(((baseline.get("meta") or {}).get("v2") or {}).get("active")); candidate=deepcopy(baseline); series={}
+    decision_rows=[]
+    df,audit=build_v2_daily(years,SWITCH_DAY,target,decision_rows=decision_rows); target=date.fromisoformat(audit["evaluated_end"]); initial=not bool(((baseline.get("meta") or {}).get("v2") or {}).get("active")); candidate=deepcopy(baseline); series={}
     first_new_offsets=[]
     for fuel,short in core.FUELS.items():
         for region in ["corse","moy_regions"]+core.REGIONS:
@@ -389,6 +395,7 @@ def main() -> None:
             if old_prefix != new_prefix: raise RuntimeError(f"Pre-transition C1 history changed: {short}/{region}")
             protected += len(old_prefix)
     summary={"status":"c1-v2-production-candidate","production_modified":False,"initial_transition":initial,"daily_switch_date":SWITCH_DAY.isoformat(),"weekly_switch_date":WEEKLY_SWITCH.isoformat(),"monthly_switch":MONTHLY_SWITCH,"target_end":target.isoformat(),"protected_daily_rows_verified":protected,"rewritten_daily_rows_total":sum(v["rewritten_rows"] for v in series.values()),"added_daily_rows_total":sum(v["added_rows"] for v in series.values()),"series":series,"engine":audit}
+    summary["exclusion_evidence"] = write_evidence(ROOT, "c1", decision_rows, source_files=[ROOT/args.input, output, CORSE_REGISTRY, Path(__file__), *sorted((ROOT/".cache"/"official-fuel").glob("*.zip")), *sorted((ROOT/"outputs"/"ufip").glob("*.csv"))])
     summary_path.write_text(json.dumps(summary,ensure_ascii=False,indent=2),encoding="utf-8"); print(json.dumps(summary,ensure_ascii=False,indent=2))
 
 if __name__ == "__main__": main()
