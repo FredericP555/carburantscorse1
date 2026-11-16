@@ -1,6 +1,6 @@
 {
   "schema": "a4c-corsica-station-brands-v2",
-  "generated_at": "2026-11-09T06:08:23.073965+00:00",
+  "generated_at": "2026-11-16T06:08:18.288758+00:00",
   "source": {
     "station_ids": "official annual fuel-price stock already used by the A4C update",
     "enseigne": "official prix-carburants.gouv.fr station detail HTML",
@@ -18,17 +18,17 @@
     "brand_reverify_limit_per_run": 12,
     "temporal_policy": "a detected brand/classification change becomes valid on its verification date; earlier periods are preserved"
   },
-  "current_station_count": 85,
-  "verified_brand_count": 85,
+  "current_station_count": 115,
+  "verified_brand_count": 115,
   "fetch_error_count": 0,
   "unresolved_current_count": 0,
   "segment_counts_current": {
     "gms_lowcost": 0,
     "inconnu": 0,
-    "traditionnel": 85
+    "traditionnel": 115
   },
   "detail_counts_current": {
-    "major_tradi": 25,
+    "major_tradi": 55,
     "marque_tradi": 60
   },
   "stations": {
@@ -84,10 +84,12 @@
       "detail": "major_tradi",
       "classification_source": "auto",
       "brand_source": "officiel",
-      "active": false,
+      "active": true,
       "first_seen": "2026-08-19",
-      "last_seen": "2026-08-19",
-      "verified_at": "2026-08-19T12:19:15.155041+00:00"
+      "last_seen": "2026-11-16",
+      "verified_at": "2026-11-16T06:08:18.288758+00:00",
+      "brand_valid_from": "2026-08-19",
+      "brand_history": []
     },
     "20090004": {
       "enseigne": "VITO",
@@ -216,10 +218,12 @@
       "detail": "major_tradi",
       "classification_source": "auto",
       "brand_source": "officiel",
-      "active": false,
+      "active": true,
       "first_seen": "2026-08-19",
-      "last_seen": "2026-08-19",
-      "verified_at": "2026-08-19T12:19:15.155041+00:00"
+      "last_seen": "2026-11-16",
+      "verified_at": "2026-11-16T06:08:18.288758+00:00",
+      "brand_valid_from": "2026-08-19",
+      "brand_history": []
     },
     "20113002": {
       "enseigne": "TotalEnergies",
@@ -227,10 +231,12 @@
       "detail": "major_tradi",
       "classification_source": "auto",
       "brand_source": "officiel",
-      "active": false,
+      "active": true,
       "first_seen": "2026-08-19",
-      "last_seen": "2026-08-19",
-      "verified_at": "2026-08-19T12:19:15.155041+00:00"
+      "last_seen": "2026-11-16",
+      "verified_at": "2026-11-16T06:08:18.288758+00:00",
+      "brand_valid_from": "2026-08-19",
+      "brand_history": []
     },
     "20115001": {
       "enseigne": "ENI",
@@ -249,7 +255,7 @@
       "detail": "major_tradi",
       "classification_source": "auto",
       "brand_source": "officiel",
-      "active": true,
+      "active": false,
       "first_seen": "2026-08-19",
       "last_seen": "2026-09-28",
       "verified_at": "2026-09-28T11:38:28.923255+00:00",
@@ -295,10 +301,12 @@
       "detail": "major_tradi",
       "classification_source": "auto",
       "brand_source": "officiel",
-      "active": false,
+      "active": true,
       "first_seen": "2026-08-19",
-      "last_seen": "2026-08-19",
-      "verified_at": "2026-08-19T12:19:15.155041+00:00"
+      "last_seen": "2026-11-16",
+      "verified_at": "2026-11-16T06:08:18.288758+00:00",
+      "brand_valid_from": "2026-08-19",
+      "brand_history": []
     },
     "20137004": {
       "enseigne": "TotalEnergies",
@@ -317,10 +325,12 @@
       "detail": "major_tradi",
       "classification_source": "auto",
       "brand_source": "officiel",
-      "active": false,
+      "active": true,
       "first_seen": "2026-08-19",
-      "last_seen": "2026-08-19",
-      "verified_at": "2026-08-19T12:19:15.155041+00:00"
+      "last_seen": "2026-11-16",
+      "verified_at": "2026-11-16T06:08:18.288758+00:00",
+      "brand_valid_from": "2026-08-19",
+      "brand_history": []
     },
     "20137006": {
       "enseigne": "TotalEnergies",
@@ -339,10 +349,12 @@
       "detail": "major_tradi",
       "classification_source": "auto",
       "brand_source": "officiel",
-      "active": false,
+      "active": true,
       "first_seen": "2026-08-19",
-      "last_seen": "2026-08-19",
-      "verified_at": "2026-08-19T12:19:15.155041+00:00"
+      "last_seen": "2026-11-16",
+      "verified_at": "2026-11-16T06:08:18.288758+00:00",
+      "brand_valid_from": "2026-08-19",
+      "brand_history": []
     },
     "20137008": {
       "enseigne": "VITO",
@@ -442,10 +454,12 @@
       "detail": "major_tradi",
       "classification_source": "auto",
       "brand_source": "officiel",
-      "active": false,
+      "active": true,
       "first_seen": "2026-08-19",
-      "last_seen": "2026-08-19",
-      "verified_at": "2026-08-19T12:19:15.155041+00:00"
+      "last_seen": "2026-11-16",
+      "verified_at": "2026-11-16T06:08:18.288758+00:00",
+      "brand_valid_from": "2026-08-19",
+      "brand_history": []
     },
     "20148001": {
       "enseigne": "ENI",
@@ -464,10 +478,12 @@
       "detail": "major_tradi",
       "classification_source": "auto",
       "brand_source": "officiel",
-      "active": false,
+      "active": true,
       "first_seen": "2026-08-19",
-      "last_seen": "2026-08-19",
-      "verified_at": "2026-08-19T12:19:15.155041+00:00"
+      "last_seen": "2026-11-16",
+      "verified_at": "2026-11-16T06:08:18.288758+00:00",
+      "brand_valid_from": "2026-08-19",
+      "brand_history": []
     },
     "20156001": {
       "enseigne": "VITO",
@@ -554,10 +570,12 @@
       "detail": "major_tradi",
       "classification_source": "auto",
       "brand_source": "officiel",
-      "active": false,
+      "active": true,
       "first_seen": "2026-08-19",
-      "last_seen": "2026-08-19",
-      "verified_at": "2026-08-19T12:19:15.155041+00:00"
+      "last_seen": "2026-11-16",
+      "verified_at": "2026-11-16T06:08:18.288758+00:00",
+      "brand_valid_from": "2026-08-19",
+      "brand_history": []
     },
     "20167005": {
       "enseigne": "VITO",
@@ -609,10 +627,12 @@
       "detail": "major_tradi",
       "classification_source": "auto",
       "brand_source": "officiel",
-      "active": false,
+      "active": true,
       "first_seen": "2026-08-19",
-      "last_seen": "2026-08-19",
-      "verified_at": "2026-08-19T12:19:15.155041+00:00"
+      "last_seen": "2026-11-16",
+      "verified_at": "2026-11-16T06:08:18.288758+00:00",
+      "brand_valid_from": "2026-08-19",
+      "brand_history": []
     },
     "20169002": {
       "enseigne": "Indépendant sans enseigne",
@@ -631,10 +651,12 @@
       "detail": "major_tradi",
       "classification_source": "auto",
       "brand_source": "officiel",
-      "active": false,
+      "active": true,
       "first_seen": "2026-08-19",
-      "last_seen": "2026-08-19",
-      "verified_at": "2026-08-19T12:19:15.155041+00:00"
+      "last_seen": "2026-11-16",
+      "verified_at": "2026-11-16T06:08:18.288758+00:00",
+      "brand_valid_from": "2026-08-19",
+      "brand_history": []
     },
     "20170002": {
       "enseigne": "TotalEnergies",
@@ -688,10 +710,12 @@
       "detail": "major_tradi",
       "classification_source": "auto",
       "brand_source": "officiel",
-      "active": false,
+      "active": true,
       "first_seen": "2026-08-19",
-      "last_seen": "2026-08-19",
-      "verified_at": "2026-08-19T12:19:15.155041+00:00"
+      "last_seen": "2026-11-16",
+      "verified_at": "2026-11-16T06:08:18.288758+00:00",
+      "brand_valid_from": "2026-08-19",
+      "brand_history": []
     },
     "20200008": {
       "enseigne": "ENI",
@@ -778,10 +802,12 @@
       "detail": "major_tradi",
       "classification_source": "auto",
       "brand_source": "officiel",
-      "active": false,
+      "active": true,
       "first_seen": "2026-09-07",
-      "last_seen": "2026-09-07",
-      "verified_at": "2026-09-07T07:57:01.564006+00:00"
+      "last_seen": "2026-11-16",
+      "verified_at": "2026-11-16T06:08:18.288758+00:00",
+      "brand_valid_from": "2026-09-07",
+      "brand_history": []
     },
     "20214003": {
       "enseigne": "ENI",
@@ -868,10 +894,12 @@
       "detail": "major_tradi",
       "classification_source": "auto",
       "brand_source": "officiel",
-      "active": false,
+      "active": true,
       "first_seen": "2026-08-19",
-      "last_seen": "2026-08-19",
-      "verified_at": "2026-08-19T12:19:15.155041+00:00"
+      "last_seen": "2026-11-16",
+      "verified_at": "2026-11-16T06:08:18.288758+00:00",
+      "brand_valid_from": "2026-08-19",
+      "brand_history": []
     },
     "20218008": {
       "enseigne": "VITO",
@@ -901,10 +929,12 @@
       "detail": "major_tradi",
       "classification_source": "auto",
       "brand_source": "officiel",
-      "active": false,
+      "active": true,
       "first_seen": "2026-08-19",
-      "last_seen": "2026-08-19",
-      "verified_at": "2026-08-19T12:19:15.155041+00:00"
+      "last_seen": "2026-11-16",
+      "verified_at": "2026-11-16T06:08:18.288758+00:00",
+      "brand_valid_from": "2026-08-19",
+      "brand_history": []
     },
     "20220001": {
       "enseigne": "TotalEnergies",
@@ -912,10 +942,12 @@
       "detail": "major_tradi",
       "classification_source": "auto",
       "brand_source": "officiel",
-      "active": false,
+      "active": true,
       "first_seen": "2026-08-19",
-      "last_seen": "2026-08-19",
-      "verified_at": "2026-08-19T12:19:15.155041+00:00"
+      "last_seen": "2026-11-16",
+      "verified_at": "2026-11-16T06:08:18.288758+00:00",
+      "brand_valid_from": "2026-08-19",
+      "brand_history": []
     },
     "20220002": {
       "enseigne": "VITO",
@@ -934,10 +966,12 @@
       "detail": "major_tradi",
       "classification_source": "auto",
       "brand_source": "officiel",
-      "active": false,
+      "active": true,
       "first_seen": "2026-08-19",
-      "last_seen": "2026-08-19",
-      "verified_at": "2026-08-19T12:19:15.155041+00:00"
+      "last_seen": "2026-11-16",
+      "verified_at": "2026-11-16T06:08:18.288758+00:00",
+      "brand_valid_from": "2026-08-19",
+      "brand_history": []
     },
     "20220006": {
       "enseigne": "TotalEnergies",
@@ -945,10 +979,12 @@
       "detail": "major_tradi",
       "classification_source": "auto",
       "brand_source": "officiel",
-      "active": false,
+      "active": true,
       "first_seen": "2026-08-19",
-      "last_seen": "2026-08-19",
-      "verified_at": "2026-08-19T12:19:15.155041+00:00"
+      "last_seen": "2026-11-16",
+      "verified_at": "2026-11-16T06:08:18.288758+00:00",
+      "brand_valid_from": "2026-08-19",
+      "brand_history": []
     },
     "20221001": {
       "enseigne": "VITO",
@@ -978,10 +1014,12 @@
       "detail": "major_tradi",
       "classification_source": "auto",
       "brand_source": "officiel",
-      "active": false,
+      "active": true,
       "first_seen": "2026-08-19",
-      "last_seen": "2026-08-19",
-      "verified_at": "2026-08-19T12:19:15.155041+00:00"
+      "last_seen": "2026-11-16",
+      "verified_at": "2026-11-16T06:08:18.288758+00:00",
+      "brand_valid_from": "2026-08-19",
+      "brand_history": []
     },
     "20228005": {
       "enseigne": "VITO",
@@ -1011,10 +1049,12 @@
       "detail": "major_tradi",
       "classification_source": "auto",
       "brand_source": "officiel",
-      "active": false,
+      "active": true,
       "first_seen": "2026-08-19",
-      "last_seen": "2026-08-19",
-      "verified_at": "2026-08-19T12:19:15.155041+00:00"
+      "last_seen": "2026-11-16",
+      "verified_at": "2026-11-16T06:08:18.288758+00:00",
+      "brand_valid_from": "2026-08-19",
+      "brand_history": []
     },
     "20230008": {
       "enseigne": "VITO",
@@ -1044,10 +1084,12 @@
       "detail": "major_tradi",
       "classification_source": "auto",
       "brand_source": "officiel",
-      "active": false,
+      "active": true,
       "first_seen": "2026-08-19",
-      "last_seen": "2026-08-19",
-      "verified_at": "2026-08-19T12:19:15.155041+00:00"
+      "last_seen": "2026-11-16",
+      "verified_at": "2026-11-16T06:08:18.288758+00:00",
+      "brand_valid_from": "2026-08-19",
+      "brand_history": []
     },
     "20240001": {
       "enseigne": "VITO",
@@ -1077,10 +1119,12 @@
       "detail": "major_tradi",
       "classification_source": "auto",
       "brand_source": "officiel",
-      "active": false,
+      "active": true,
       "first_seen": "2026-08-19",
-      "last_seen": "2026-08-19",
-      "verified_at": "2026-08-19T12:19:15.155041+00:00"
+      "last_seen": "2026-11-16",
+      "verified_at": "2026-11-16T06:08:18.288758+00:00",
+      "brand_valid_from": "2026-08-19",
+      "brand_history": []
     },
     "20240004": {
       "enseigne": "VITO",
@@ -1112,10 +1156,12 @@
       "detail": "major_tradi",
       "classification_source": "auto",
       "brand_source": "officiel",
-      "active": false,
+      "active": true,
       "first_seen": "2026-08-19",
-      "last_seen": "2026-08-19",
-      "verified_at": "2026-08-19T12:19:15.155041+00:00"
+      "last_seen": "2026-11-16",
+      "verified_at": "2026-11-16T06:08:18.288758+00:00",
+      "brand_valid_from": "2026-08-19",
+      "brand_history": []
     },
     "20245002": {
       "enseigne": "Indépendant sans enseigne",
@@ -1134,10 +1180,12 @@
       "detail": "major_tradi",
       "classification_source": "auto",
       "brand_source": "officiel",
-      "active": false,
+      "active": true,
       "first_seen": "2026-08-19",
-      "last_seen": "2026-08-19",
-      "verified_at": "2026-08-19T12:19:15.155041+00:00"
+      "last_seen": "2026-11-16",
+      "verified_at": "2026-11-16T06:08:18.288758+00:00",
+      "brand_valid_from": "2026-08-19",
+      "brand_history": []
     },
     "20250001": {
       "enseigne": "VITO",
@@ -1156,10 +1204,12 @@
       "detail": "major_tradi",
       "classification_source": "auto",
       "brand_source": "officiel",
-      "active": false,
+      "active": true,
       "first_seen": "2026-08-19",
-      "last_seen": "2026-08-19",
-      "verified_at": "2026-08-19T12:19:15.155041+00:00"
+      "last_seen": "2026-11-16",
+      "verified_at": "2026-11-16T06:08:18.288758+00:00",
+      "brand_valid_from": "2026-08-19",
+      "brand_history": []
     },
     "20250003": {
       "enseigne": "VITO",
@@ -1200,10 +1250,12 @@
       "detail": "major_tradi",
       "classification_source": "auto",
       "brand_source": "officiel",
-      "active": false,
+      "active": true,
       "first_seen": "2026-08-19",
-      "last_seen": "2026-08-19",
-      "verified_at": "2026-08-19T12:19:15.155041+00:00"
+      "last_seen": "2026-11-16",
+      "verified_at": "2026-11-16T06:08:18.288758+00:00",
+      "brand_valid_from": "2026-08-19",
+      "brand_history": []
     },
     "20260003": {
       "enseigne": "VITO",
@@ -1255,10 +1307,12 @@
       "detail": "major_tradi",
       "classification_source": "auto",
       "brand_source": "officiel",
-      "active": false,
+      "active": true,
       "first_seen": "2026-08-19",
-      "last_seen": "2026-08-19",
-      "verified_at": "2026-08-19T12:19:15.155041+00:00"
+      "last_seen": "2026-11-16",
+      "verified_at": "2026-11-16T06:08:18.288758+00:00",
+      "brand_valid_from": "2026-08-19",
+      "brand_history": []
     },
     "20290003": {
       "enseigne": "TotalEnergies",
@@ -1266,10 +1320,12 @@
       "detail": "major_tradi",
       "classification_source": "auto",
       "brand_source": "officiel",
-      "active": false,
+      "active": true,
       "first_seen": "2026-08-19",
-      "last_seen": "2026-08-19",
-      "verified_at": "2026-08-19T12:19:15.155041+00:00"
+      "last_seen": "2026-11-16",
+      "verified_at": "2026-11-16T06:08:18.288758+00:00",
+      "brand_valid_from": "2026-08-19",
+      "brand_history": []
     },
     "20290008": {
       "enseigne": "VITO",
@@ -1332,10 +1388,12 @@
       "detail": "major_tradi",
       "classification_source": "auto",
       "brand_source": "officiel",
-      "active": false,
+      "active": true,
       "first_seen": "2026-08-19",
-      "last_seen": "2026-08-19",
-      "verified_at": "2026-08-19T12:19:15.155041+00:00"
+      "last_seen": "2026-11-16",
+      "verified_at": "2026-11-16T06:08:18.288758+00:00",
+      "brand_valid_from": "2026-08-19",
+      "brand_history": []
     },
     "20600004": {
       "enseigne": "TotalEnergies",
@@ -1343,10 +1401,12 @@
       "detail": "major_tradi",
       "classification_source": "auto",
       "brand_source": "officiel",
-      "active": false,
+      "active": true,
       "first_seen": "2026-08-19",
-      "last_seen": "2026-08-19",
-      "verified_at": "2026-08-19T12:19:15.155041+00:00"
+      "last_seen": "2026-11-16",
+      "verified_at": "2026-11-16T06:08:18.288758+00:00",
+      "brand_valid_from": "2026-08-19",
+      "brand_history": []
     },
     "20600006": {
       "enseigne": "TotalEnergies",
@@ -1354,10 +1414,12 @@
       "detail": "major_tradi",
       "classification_source": "auto",
       "brand_source": "officiel",
-      "active": false,
+      "active": true,
       "first_seen": "2026-08-19",
-      "last_seen": "2026-08-19",
-      "verified_at": "2026-08-19T12:19:15.155041+00:00"
+      "last_seen": "2026-11-16",
+      "verified_at": "2026-11-16T06:08:18.288758+00:00",
+      "brand_valid_from": "2026-08-19",
+      "brand_history": []
     },
     "20600007": {
       "enseigne": "ENI",
