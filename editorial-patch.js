@@ -150,13 +150,17 @@ updateBouclierInfo=function(){
   const b=DATA?.meta?.bouclier?.[carbu];
   if(!b) return;
   const priorRanges=editorialEarlierIranWarRanges(b,b.current_active_since);
-  const statut=b.current_active
-    ? `<strong>actuellement détecté comme contraignant depuis le ${autoDateFr(b.current_active_since)}</strong>`
-    : '<strong>actuellement non contraignant</strong>';
+  const lastRange=Array.isArray(b.ranges)&&b.ranges.length?b.ranges[b.ranges.length-1]:null;
+  const inactiveSince=lastRange?.d2
+    ? new Date(Date.parse(lastRange.d2)+DAY_MS).toISOString().slice(0,10)
+    : null;
+  const statut=b.current_active&&b.current_active_since
+    ? `<strong>Bouclier TotalEnergies actif depuis le ${autoDateFr(b.current_active_since)}</strong>`
+    : `<strong>Bouclier TotalEnergies inactif${inactiveSince?' depuis le '+autoDateFr(inactiveSince):''}</strong>`;
   const precedent=priorRanges.length
     ? ` · Déjà détecté comme contraignant après le début de la guerre en Iran : ${editorialJoinRanges(priorRanges,true)}`
     : '';
-  bi.innerHTML=`■ Plafond TotalEnergies suivi : <b>${autoNumberFr(b.current_cap,2)} €/L TTC</b> · Bouclier ${statut}${precedent}`+
+  bi.innerHTML=`■ Plafond TotalEnergies suivi : <b>${autoNumberFr(b.current_cap,2)} €/L TTC</b> · ${statut}${precedent}`+
     (carbu==='Gazole'?' <span style="color:rgba(234,88,12,0.8)">· Promotions 2,09 €/L observées par épisodes en mai 2026</span>':'');
   if(lp){
     lp.style.display=carbu==='Gazole'?'flex':'none';
