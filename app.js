@@ -155,6 +155,38 @@ function getDateX(chart, dateStr) {
   return i<0 ? null : chart.scales.x.getPixelForValue(i);
 }
 
+// Le bouclier colore les journées civiles complètes, y compris en vues hebdo/mensuelle.
+function getZoneDateX(chart,dateStr) {
+  const labels=chart.data.labels;
+  if(!labels||!labels.length)return null;
+  const asTime=s=>Date.parse((String(s).length===7?String(s)+'-01':String(s))+'T00:00:00Z');
+  const target=asTime(dateStr);
+  if(!Number.isFinite(target))return null;
+  const {left,right}=chart.chartArea;
+  const first=asTime(labels[0]);
+  if(target<=first)return left;
+  const ck=carbu==='Gazole'?'G':'S';
+  const daily=getSeries(ck,'corse','d');
+  const finalDaily=daily.length?ORIGIN_MS+(Number(daily[daily.length-1][0])+1)*DAY_MS:NaN;
+  const last=asTime(labels[labels.length-1]);
+  const finalEnd=Number.isFinite(finalDaily)&&finalDaily>last?finalDaily:last+DAY_MS;
+  if(target>=finalEnd)return right;
+  let lo=0,hi=labels.length-1;
+  while(lo<hi){
+    const mid=Math.ceil((lo+hi)/2);
+    if(asTime(labels[mid])<=target)lo=mid;
+    else hi=mid-1;
+  }
+  const start=asTime(labels[lo]);
+  const end=lo+1<labels.length?asTime(labels[lo+1]):finalEnd;
+  if(!Number.isFinite(start)||!Number.isFinite(end)||end<=start)return null;
+  const fraction=Math.max(0,Math.min(1,(target-start)/(end-start)));
+  return left+(lo+fraction)*(right-left)/labels.length;
+}
+function nextZoneDay(dateStr){
+  return new Date(Date.parse(dateStr+'T00:00:00Z')+DAY_MS).toISOString().slice(0,10);
+}
+
 const zonesPlugin = {
   id:'zonesPlugin',
   afterDraw(chart) {
@@ -168,7 +200,7 @@ const zonesPlugin = {
       ctx.fillRect(x1,top,x2-x1,bottom-top);
     });
     getBouclierRanges(carbu).forEach(z=>{
-      const x1=getDateX(chart,z.d1),x2=getDateX(chart,z.d2);
+      const x1=getZoneDateX(chart,z.d1),x2=getZoneDateX(chart,nextZoneDay(z.d2));
       if(x1==null||x2==null) return;
       ctx.fillStyle='rgba(251,191,36,0.20)';
       ctx.fillRect(x1,top,x2-x1,bottom-top);
