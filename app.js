@@ -187,39 +187,6 @@ function nextZoneDay(dateStr){
   return new Date(Date.parse(dateStr+'T00:00:00Z')+DAY_MS).toISOString().slice(0,10);
 }
 
-// Projeter les limites des zones à l'intérieur des journées/semaines/mois.
-// Les dates de fin enregistrées sont inclusives ; le rendu utilise la borne
-// exclusive (lendemain) pour ne pas omettre le dernier jour effectif.
-// On ne touche ni aux points des courbes ni aux périodes calculées.
-function getZoneDateX(chart, dateStr) {
-  const labels=chart.data.labels||[];
-  if(!labels.length) return null;
-  const {left,right}=chart.chartArea;
-  const midnight=s=>Date.parse(String(s).length===7?s+'-01':s);
-  const target=midnight(dateStr);
-  if(!Number.isFinite(target)) return null;
-  const starts=labels.map(midnight);
-  const last=starts.length-1;
-  if(target<starts[0]) return left;
-  const afterLast=resolution==='m'
-    ? Date.UTC(Number(labels[last].slice(0,4)),Number(labels[last].slice(5,7)),1)
-    : starts[last]+(resolution==='w'?7:1)*DAY_MS;
-  if(target>=afterLast) return right;
-  let i=last;
-  for(let k=0;k<last;k++){
-    if(target<starts[k+1]){i=k;break;}
-  }
-  const end=i<last?starts[i+1]:afterLast;
-  const fraction=Math.max(0,Math.min(1,(target-starts[i])/(end-starts[i])));
-  const pixel=n=>chart.scales.x.getPixelForValue(n);
-  const startX=i===0?left:(pixel(i-1)+pixel(i))/2;
-  const endX=i===last?right:(pixel(i)+pixel(i+1))/2;
-  return startX+fraction*(endX-startX);
-}
-function zoneEndExclusive(dateStr) {
-  return new Date(Date.parse(dateStr)+DAY_MS).toISOString().slice(0,10);
-}
-
 const zonesPlugin = {
   id:'zonesPlugin',
   afterDraw(chart) {
@@ -227,7 +194,7 @@ const zonesPlugin = {
     if(!x||!y) return;
     ctx.save(); ctx.beginPath(); ctx.rect(left,top,right-left,bottom-top); ctx.clip();
     ZONES.forEach(z=>{
-      const x1=getZoneDateX(chart,z.d1),x2=getZoneDateX(chart,zoneEndExclusive(z.d2));
+      const x1=getDateX(chart,z.d1),x2=getDateX(chart,z.d2);
       if(x1==null||x2==null) return;
       ctx.fillStyle=`rgba(34,197,94,${z.alpha_fill})`;
       ctx.fillRect(x1,top,x2-x1,bottom-top);
@@ -239,7 +206,7 @@ const zonesPlugin = {
       ctx.fillRect(x1,top,x2-x1,bottom-top);
     });
     if(carbu==='Gazole')(BOUCLIER['Gazole_promo']||[]).forEach(z=>{
-      const x1=getZoneDateX(chart,z.d1),x2=getZoneDateX(chart,zoneEndExclusive(z.d2));
+      const x1=getDateX(chart,z.d1),x2=getDateX(chart,z.d2);
       if(x1==null||x2==null) return;
       ctx.fillStyle='rgba(234,88,12,0.09)';
       ctx.fillRect(x1,top,x2-x1,bottom-top);
