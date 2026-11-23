@@ -51,10 +51,25 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          tag="$(gh release list --repo "$GITHUB_REPOSITORY" --limit 100 --json tagName,publishedAt \
+          retry_gh() {
+            local attempt=1
+            while true; do
+              if "$@"; then
+                return 0
+              fi
+              if (( attempt >= 3 )); then
+                echo "GitHub API failed after 3 attempts" >&2
+                return 1
+              fi
+              echo "GitHub API unavailable; retry $((attempt + 1))/3 in $((attempt * 5))s" >&2
+              sleep "$((attempt * 5))"
+              attempt=$((attempt + 1))
+            done
+          }
+          tag="$(retry_gh gh release list --repo "$GITHUB_REPOSITORY" --limit 100 --json tagName,publishedAt \
             --jq '[.[] | select(.tagName | startswith("a4c-v2-shared-"))] | sort_by(.publishedAt) | last | .tagName // ""')"
           test -n "$tag"
-          release_json="$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$tag")"
+          release_json="$(retry_gh gh api "repos/$GITHUB_REPOSITORY/releases/tags/$tag")"
           target="$(jq -r '.target_commitish // ""' <<<"$release_json")"
           bundle_digest="$(jq -r '[.assets[] | select(.name=="official_13_20.csv.gz")][0].digest // ""' <<<"$release_json")"
           manifest_digest="$(jq -r '[.assets[] | select(.name=="official_13_20.meta.json")][0].digest // ""' <<<"$release_json")"
