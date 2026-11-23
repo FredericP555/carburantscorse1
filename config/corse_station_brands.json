@@ -1,6 +1,6 @@
 {
   "schema": "a4c-corsica-station-brands-v2",
-  "generated_at": "2026-11-23T06:08:23.243104+00:00",
+  "generated_at": "2026-11-23T16:18:49.268779+00:00",
   "source": {
     "station_ids": "official annual fuel-price stock already used by the A4C update",
     "enseigne": "official prix-carburants.gouv.fr station detail HTML",
@@ -270,8 +270,10 @@
       "brand_source": "officiel",
       "active": true,
       "first_seen": "2026-08-19",
-      "last_seen": "2026-08-19",
-      "verified_at": "2026-08-19T12:19:15.155041+00:00"
+      "last_seen": "2026-11-23",
+      "verified_at": "2026-11-23T16:18:49.268779+00:00",
+      "brand_valid_from": "2026-08-19",
+      "brand_history": []
     },
     "20118001": {
       "enseigne": "TotalEnergies",
@@ -294,8 +296,10 @@
       "brand_source": "officiel",
       "active": true,
       "first_seen": "2026-08-19",
-      "last_seen": "2026-08-19",
-      "verified_at": "2026-08-19T12:19:15.155041+00:00"
+      "last_seen": "2026-11-23",
+      "verified_at": "2026-11-23T16:18:49.268779+00:00",
+      "brand_valid_from": "2026-08-19",
+      "brand_history": []
     },
     "20130002": {
       "enseigne": "TotalEnergies",
@@ -316,8 +320,10 @@
       "brand_source": "officiel",
       "active": true,
       "first_seen": "2026-08-19",
-      "last_seen": "2026-08-19",
-      "verified_at": "2026-08-19T12:19:15.155041+00:00"
+      "last_seen": "2026-11-23",
+      "verified_at": "2026-11-23T16:18:49.268779+00:00",
+      "brand_valid_from": "2026-08-19",
+      "brand_history": []
     },
     "20131002": {
       "enseigne": "TotalEnergies",
@@ -366,8 +372,10 @@
       "brand_source": "officiel",
       "active": true,
       "first_seen": "2026-08-19",
-      "last_seen": "2026-11-01",
-      "verified_at": "2026-08-19T12:19:15.155041+00:00"
+      "last_seen": "2026-11-23",
+      "verified_at": "2026-11-23T16:18:49.268779+00:00",
+      "brand_valid_from": "2026-08-19",
+      "brand_history": []
     },
     "20137007": {
       "enseigne": "TotalEnergies",
@@ -390,8 +398,10 @@
       "brand_source": "officiel",
       "active": true,
       "first_seen": "2026-08-19",
-      "last_seen": "2026-08-19",
-      "verified_at": "2026-08-19T12:19:15.155041+00:00"
+      "last_seen": "2026-11-23",
+      "verified_at": "2026-11-23T16:18:49.268779+00:00",
+      "brand_valid_from": "2026-08-19",
+      "brand_history": []
     },
     "20137009": {
       "enseigne": "VITO",
@@ -401,8 +411,10 @@
       "brand_source": "officiel",
       "active": true,
       "first_seen": "2026-08-19",
-      "last_seen": "2026-08-19",
-      "verified_at": "2026-08-19T12:19:15.155041+00:00"
+      "last_seen": "2026-11-23",
+      "verified_at": "2026-11-23T16:18:49.268779+00:00",
+      "brand_valid_from": "2026-08-19",
+      "brand_history": []
     },
     "20137010": {
       "enseigne": "VITO",
@@ -412,8 +424,10 @@
       "brand_source": "officiel",
       "active": true,
       "first_seen": "2026-08-19",
-      "last_seen": "2026-08-19",
-      "verified_at": "2026-08-19T12:19:15.155041+00:00"
+      "last_seen": "2026-11-23",
+      "verified_at": "2026-11-23T16:18:49.268779+00:00",
+      "brand_valid_from": "2026-08-19",
+      "brand_history": []
     },
     "20140001": {
       "enseigne": "VITO",
@@ -423,8 +437,10 @@
       "brand_source": "officiel",
       "active": true,
       "first_seen": "2026-08-19",
-      "last_seen": "2026-08-19",
-      "verified_at": "2026-08-19T12:19:15.155041+00:00"
+      "last_seen": "2026-11-23",
+      "verified_at": "2026-11-23T16:18:49.268779+00:00",
+      "brand_valid_from": "2026-08-19",
+      "brand_history": []
     },
     "20144002": {
       "enseigne": "VITO",
@@ -434,8 +450,10 @@
       "brand_source": "officiel",
       "active": true,
       "first_seen": "2026-08-19",
-      "last_seen": "2026-08-19",
-      "verified_at": "2026-08-19T12:19:15.155041+00:00"
+      "last_seen": "2026-11-23",
+      "verified_at": "2026-11-23T16:18:49.268779+00:00",
+      "brand_valid_from": "2026-08-19",
+      "brand_history": []
     },
     "20144003": {
       "enseigne": "VITO",
@@ -445,8 +463,10 @@
       "brand_source": "officiel",
       "active": true,
       "first_seen": "2026-08-19",
-      "last_seen": "2026-08-19",
-      "verified_at": "2026-08-19T12:19:15.155041+00:00"
+      "last_seen": "2026-11-23",
+      "verified_at": "2026-11-23T16:18:49.268779+00:00",
+      "brand_valid_from": "2026-08-19",
+      "brand_history": []
     },
     "20145001": {
       "enseigne": "TotalEnergies",
@@ -495,8 +515,10 @@
       "brand_source": "officiel",
       "active": true,
       "first_seen": "2026-08-19",
-      "last_seen": "2026-08-19",
-      "verified_at": "2026-08-19T12:19:15.155041+00:00"
+      "last_seen": "2026-11-23",
+      "verified_at": "2026-11-23T16:18:49.268779+00:00",
+      "brand_valid_from": "2026-08-19",
+      "brand_history": []
     },
     "20153003": {
       "enseigne": "TotalEnergies",
@@ -519,8 +541,10 @@
       "brand_source": "officiel",
       "active": true,
       "first_seen": "2026-08-19",
-      "last_seen": "2026-08-19",
-      "verified_at": "2026-08-19T12:19:15.155041+00:00"
+      "last_seen": "2026-11-23",
+      "verified_at": "2026-11-23T16:18:49.268779+00:00",
+      "brand_valid_from": "2026-08-19",
+      "brand_history": []
     },
     "20160001": {
       "enseigne": "ENI",
